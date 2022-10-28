@@ -1,0 +1,6 @@
+include *.md
+include LICENSE
+include scripts/*.sh
+recursive-include nrdz-toolkit/data *
+exclude docs/.DS_Store
+prune docs/_build
