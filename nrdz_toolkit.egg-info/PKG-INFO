@@ -1,0 +1,22 @@
+Metadata-Version: 2.1
+Name: nrdz-toolkit
+Version: 0.0.0
+Summary: nrdz_toolkit: tools for viewing, manipulating, etc
+Home-page: https://github.com/i
+Author: David R. DeBoer
+Author-email: ddeboer@berkeley.edu
+License: BSD
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Console
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Topic :: Scientific/Engineering
+Provides-Extra: sqlite
+Provides-Extra: all
+Provides-Extra: dev
+
+This repository has tools to handle NRDZ data.
