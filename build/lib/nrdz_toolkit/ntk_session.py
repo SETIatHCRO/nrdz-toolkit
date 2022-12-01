@@ -12,6 +12,7 @@ from sqlalchemy import desc, asc
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import func
 from astropy.time import Time
+from .ntk_tables import hardware_fixed
 
 
 class CMSession(Session):
@@ -259,3 +260,15 @@ class CMSession(Session):
             # Generic approach:
             for obj in obj_list:
                 self.add(obj)
+
+    def add_hardware_fixed(self, id, loc, hostname, nfs_mnt, wr_mac, rpi_mac, ant, amp):
+       return self.add_hardware_fixed.create(
+               id, 
+               loc, 
+               hostname, 
+               nfs_mnt, 
+               wr_mac, 
+               rpi_mac, 
+               ant,
+               amp
+        )

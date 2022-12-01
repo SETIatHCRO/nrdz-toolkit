@@ -1,6 +1,12 @@
 MANIFEST.in
 README.md
+alembic.ini
 setup.py
+.github/workflows/run_test.yaml
+alembic/README
+alembic/env.py
+alembic/script.py.mako
+alembic/__pycache__/env.cpython-39.pyc
 nrdz_toolkit/__init__.py
 nrdz_toolkit/branch_scheme.py
 nrdz_toolkit/ntk.py
