@@ -2,7 +2,6 @@ MANIFEST.in
 README.md
 alembic.ini
 setup.py
-.github/workflows/run_test.yaml
 alembic/README
 alembic/env.py
 alembic/script.py.mako
@@ -17,3 +16,4 @@ nrdz_toolkit.egg-info/SOURCES.txt
 nrdz_toolkit.egg-info/dependency_links.txt
 nrdz_toolkit.egg-info/requires.txt
 nrdz_toolkit.egg-info/top_level.txt
+scripts/hardware.sql

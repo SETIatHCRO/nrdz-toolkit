@@ -12,7 +12,7 @@ from sqlalchemy import desc, asc
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import func
 from astropy.time import Time
-from .ntk_tables import hardware_fixed
+from .ntk_tables import hardware, metadata, recordings
 
 
 class CMSession(Session):
@@ -261,14 +261,42 @@ class CMSession(Session):
             for obj in obj_list:
                 self.add(obj)
 
-    def add_hardware_fixed(self, id, loc, hostname, nfs_mnt, wr_mac, rpi_mac, ant, amp):
-       return self.add_hardware_fixed.create(
-               id, 
-               loc, 
+    def add_hardware(self, hardware_id, loc, hostname, nfs_mnt, wr_mac, 
+            rpi_mac, ant, amp):
+       return self.add_hardware.create(
+               hardware_id, 
+               location, 
                hostname, 
                nfs_mnt, 
                wr_mac, 
                rpi_mac, 
-               ant,
-               amp
+               wr_ip,
+               rpi_ip,
+               usrp_sn
         )
+
+    def add_recordings(self, recordings_id, filename, filepath, created_at, 
+            entered_at, survey_id):
+        return self.add_recordings.create(
+                recordings_id,
+                filename,
+                filepath,
+                created_at,
+                entered_at,
+                survey_id
+        )
+
+    def add_metadata(self, metadata_id, frequency, sample_rate, bandwidth, 
+            gain, length, interval, bit_depth):
+        return self.add_metadata.create(
+                metadata_id,
+                frequency,
+                sample_rate,
+                bandwidth,
+                gain,
+                length,
+                interval,
+                bit_depth
+        )
+
+
