@@ -2,7 +2,7 @@ USE nrdz;
 
 INSERT INTO hardware
 (
-	id,
+	hardware_id,
 	location,
 	hostname,
 	nfs_mnt,
