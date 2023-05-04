@@ -5,10 +5,57 @@
 """All of the :tables defined here."""
 
 from astropy.time import Time
-from sqlalchemy import BigInteger, Column, DateTime, Float, ForeignKey, ForeignKeyConstraint, Integer, Numeric, String, Text, func
-from sqlalchemy.orm import relationship
+from sqlalchemy import (
+        BigInteger, 
+        Boolean,
+        CHAR,
+        Column, 
+        DateTime, 
+        Float, 
+        ForeignKey, 
+        Identity, 
+        Integer, 
+        Numeric, 
+        String, 
+        Text, 
+        func, 
+        UniqueConstraint
+    )
+from sqlalchemy.dialects.postgresql import INET, MACADDR
+from geoalchemy2 import Geometry
 from . import CMDeclarativeBase, NotNull
 import copy
+
+class status_codes(CMDeclarativeBase):
+    """
+    XXX DESCRIPTION NEEDED
+    """
+
+    __tablename__ = "status_codes"
+    
+    code_id = Column(Integer(), nullable=False, primary_key=True)
+    description = Column(Text(), nullable=False)
+
+class storage(CMDeclarativeBase):
+    """
+    XXX DESCRIPTION NEEDED
+    """
+
+    __tablename__ = "storage"
+
+    mount_id = Column(Integer(), Identity(always=True), primary_key=True)
+    nfs_mnt = Column(String(255), nullable=False, unique=True)
+    local_mnt = Column(String(255), nullable=False)
+    storage_cap = Column(BigInteger(), nullable=False)
+    op_status = Column(
+            Integer(), 
+            ForeignKey(
+                "status_codes.code_id", 
+                onupdate="CASCADE", 
+                ondelete="CASCADE"
+            ), 
+            nullable=False
+        )
 
 class hardware(CMDeclarativeBase):
     """
@@ -40,32 +87,26 @@ class hardware(CMDeclarativeBase):
 
     __tablename__ = "hardware"
 
-    hardware_id = Column(String(20), primary_key = True)
-    location = Column(String(30))
-    hostname = Column(String(20))
-    nfs_mnt = Column(String(60))
-    wr_mac = Column(String(20))
-    rpi_mac = Column(String(20))
-    wr_ip = Column(String(15))
-    rpi_ip = Column(String(15))
-    usrp_sn = Column(String(20))
-
-    status = relationship('status')
-    recordings = relationship('recordings')
-
-    @classmethod
-    def create(cls, hardware_id, location, hostname, nfs_mnt, wr_mac, 
-            rpi_mac, wr_ip, rpi_ip, usrp_sn):
-        return cls(
-                hardware_id = hardware_id,
-                location = location,
-                hostname = hostname,
-                nfs_mnt = nfs_mnt, 
-                wr_mac = wr_mac,
-                rpi_mac = rpi_mac, 
-                wr_ip = wr_ip,
-                rpi_ip = rpi_ip,
-                usrp_sn = usrp_sn
+    hardware_id = Column(Integer(), Identity(always=True), primary_key=True)
+    location = Column(Geometry('POINT'), nullable=False)
+    enclosure = Column(Boolean(), nullable=False)
+    op_status = Column(
+            Integer(),
+            ForeignKey(
+                "status_codes.code_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ),
+            nullable=False
+        )
+    mount_id = Column(
+            Integer(), 
+            ForeignKey(
+                "storage.mount_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ), 
+            nullable=False
         )
 
 class status(CMDeclarativeBase):
@@ -98,15 +139,137 @@ class status(CMDeclarativeBase):
        
     __tablename__ = "status"
 
-    status_id = Column(String(20), 
-            primary_key = True
+    status_id = Column(BigInteger(), Identity(always=True), primary_key=True)
+    hostname = Column(String(100), nullable=False)
+    time = Column(DateTime(timezone=True), primary_key=True)
+    rpi_cpu_temp = Column(Numeric(), nullable=False)
+    sdr_temp = Column(Numeric(), nullable=False)
+    avg_cpu_usage = Column(Numeric(), nullable=False)
+    bytes_recorded = Column(BigInteger(), nullable=False)
+    rem_nfs_storage_cap = Column(BigInteger(), nullable=False)
+    rem_rpi_storage_cap = Column(BigInteger(), nullable=False)
+    rpi_uptime_minutes = Column(BigInteger(), nullable=False)
+    hardware_id = Column(
+            Integer(), 
+            ForeignKey(
+                "hardware.hardware_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE",
+            ),
+            nullable=False
         )
-    time = Column(DateTime(), primary_key = True)
-    rpi_cpu_temp = Column(Numeric())
-    avg_cpu_usage = Column(Numeric())
-    bytes_recorded = Column(BigInteger())
-    storage_cap = Column(Numeric())
-    hardware_id = Column(String(20), ForeignKey('hardware.hardware_id')) 
+    wr_servo_state = Column(String(50), nullable=True)
+    wr_sfp1_link = Column(Boolean(), nullable=True)
+    wr_sfp2_link = Column(Boolean(), nullable=True)
+    wr_sfp1_tx = Column(BigInteger(), nullable=True)
+    wr_sfp1_rx = Column(BigInteger(), nullable=True)
+    wr_sfp2_tx = Column(BigInteger(), nullable=True)
+    wr_sfp2_rx = Column(BigInteger(), nullable=True)
+    wr_phase_setp = Column(Integer(), nullable=True)
+    wr_rtt = Column(Integer(), nullable=True)
+    wr_crtt = Column(Integer(), nullable=True)
+    wr_clck_offset = Column(Integer(), nullable=True)
+    wr_updt_cnt = Column(Integer(), nullable=True)
+    wr_temp = Column(Numeric(), nullable=True)
+    wr_host = Column(String(100), nullable=True)
+
+class rpi(CMDeclarativeBase):
+    """
+    XXX DESCRIPTION NEEDED
+    """
+
+    __tablename__ = "rpi"
+
+    rpi_id = Column(Integer(), Identity(always=True), primary_key=True)
+    hostname = Column(String(100), nullable=False, unique=True)
+    rpi_ip = Column(INET(), nullable=False)
+    rpi_mac = Column(MACADDR(), nullable=False)
+    rpi_v = Column(String(255), nullable=False)
+    os_v = Column(String(255), nullable=False)
+    memory = Column(BigInteger(), nullable=False)
+    storage_cap = Column(BigInteger(), nullable=False)
+    cpu_type = Column(Integer(), nullable=False)
+    cpu_cores = Column(Integer(), nullable=False)
+    op_status = Column(
+            Integer(), 
+            ForeignKey(
+                "status_codes.code_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ), 
+            nullable=False
+        )
+    hardware_id = Column(
+            Integer(), 
+            ForeignKey(
+                "hardware.hardware_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ), 
+            nullable=False
+        )   
+
+class sdr(CMDeclarativeBase):
+    """
+    XXX DESCRIPTION NEEDED
+    """
+
+    __tablename__ = "sdr"
+
+    sdr_id = Column(Integer(), Identity(always=True), primary_key=True)
+    sdr_serial = Column(CHAR(7), nullable=False, unique=True)
+    mboard_name = Column(String(255), nullable=False)
+    external_clock = Column(Boolean(), nullable=False)
+    op_status = Column(
+            Integer(), 
+            ForeignKey(
+                "status_codes.code_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ), 
+            nullable=False
+        )
+    hardware_id = Column(
+            Integer(), 
+            ForeignKey(
+                "hardware.hardware_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ), 
+            nullable=False
+        )
+
+class wrlen(CMDeclarativeBase):
+    """
+    XXX DESCRIPTION NEEDED
+    """
+
+    __tablename__ = "wrlen"
+
+    wr_id = Column(Integer(), Identity(always=True), primary_key=True)
+    wr_serial = Column(String(100), nullable=True, unique=True)
+    wr_ip = Column(INET(), nullable=True)
+    wr_mac = Column(MACADDR(), nullable=True)
+    mode = Column(String(100), nullable=True)
+    wr_host = Column(String(100), nullable=True)
+    op_status = Column(
+            Integer(), 
+            ForeignKey(
+                "status_codes.code_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ), 
+            nullable=False
+        )
+    hardware_id = Column(
+            Integer(), 
+            ForeignKey(
+                "hardware.hardware_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ), 
+            nullable=False
+        )
 
 class metadata(CMDeclarativeBase):
     """
@@ -140,32 +303,26 @@ class metadata(CMDeclarativeBase):
 
     __tablename__ = "metadata"
     
-    metadata_id = Column(String(20), primary_key = True)
-    org = Column(String(100))
-    frequency = Column(BigInteger())
-    sample_rate = Column(BigInteger())
-    bandwidth = Column(BigInteger())
-    gain = Column(Integer())
-    length = Column(Numeric())
-    interval = Column(Numeric())
-    bit_depth = Column(String(10))
+    metadata_id = Column(Integer(), Identity(always=True), primary_key=True)
+    org = Column(String(100), nullable=False, unique=True)
+    frequency = Column(BigInteger(), nullable=False, unique=True)
+    sample_rate = Column(BigInteger(), nullable=False, unique=True)
+    bandwidth = Column(BigInteger(), nullable=False, unique=True)
+    gain = Column(Integer(), nullable=False, unique=True)
+    length = Column(Numeric(), nullable=False, unique=True)
+    interval = Column(Numeric(), nullable=False, unique=True)
+    bit_depth = Column(String(10), nullable=True, unique=True)
 
-    recordings = relationship('recordings')
-
-    @classmethod
-    def create(cls, metadata_id, org, frequency, sample_rate, bandwidth, gain, 
-            length, interval, bit_depth):
-        return cls(
-                metadata_id = metadata_id,
-                org = org,
-                frequency = frequency,
-                sample_rate = sample_rate,
-                bandwidth = bandwidth,
-                gain = gain,
-                length = length,
-                interval = interval,
-                bit_depth = bit_depth
-        )
+    #uc_metadata = UniqueConstraint(
+    #        "org", 
+    #        "frequency", 
+    #        "sample_rate", 
+    #        "bandwidth", 
+    #        "gain",
+    #        "length",
+    #        "interval",
+    #        "bit_depth"
+    #)
 
 class recordings(CMDeclarativeBase):
     """
@@ -194,23 +351,51 @@ class recordings(CMDeclarativeBase):
 
     __tablename__ = "recordings"
     
-    recordings_id = Column(String(20), primary_key=True)
-    hardware_id = Column(String(20), ForeignKey('hardware.hardware_id'))
-    metadata_id = Column(String(20), ForeignKey('metadata.metadata_id'))
-    filename = Column(String(100))
-    filepath = Column(String(255))
-    created_at = Column(DateTime())
-    entered_at = Column(DateTime())
-    survey_id = Column(String(20))
-
-    @classmethod
-    def create(cls, recordings_id, hardware_id, metadata_id, filename, 
-            filepath, created_at, entered_at, survey_id):
-        return cls(
-                recordings_id = recordings_id,
-                filename = filename,
-                filepath = filepath,
-                created_at = created_at,
-                entered_at = entered_at,
-                survey_id = survey_id
+    recording_id = Column(Integer(),Identity(always=True), primary_key=True)
+    hardware_id = Column(
+            Integer(), 
+            ForeignKey(
+                "hardware.hardware_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ), 
+            nullable=False
         )
+    metadata_id = Column(
+            Integer(), 
+            ForeignKey(
+                "metadata.metadata_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ), 
+            nullable=False
+        )
+    filename = Column(String(100), nullable=False, unique=True)
+    filepath = Column(String(255), nullable=False)
+    survey_id = Column(CHAR(6), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    entered_at = Column(DateTime(timezone=True), nullable=False)
+    
+class outputs(CMDeclarativeBase):
+    """
+    XXX DESCRIPTION NEEDED
+    """
+    __tablename__ = "outputs"
+
+    output_id = Column(BigInteger(), Identity(always=True), primary_key=True)
+    recording_id = Column(
+            Integer(), 
+            ForeignKey(
+                "recordings.recording_id",
+                onupdate="CASCADE",
+                ondelete="CASCADE"
+            ), 
+            nullable=False, 
+            unique=True
+        )
+    average_db = Column(Numeric(21,16), nullable=False)
+    max_db = Column(Numeric(21,16), nullable=False)
+    median_db = Column(Numeric(21,16), nullable=False)
+    std_dev = Column(Numeric(), nullable=False)
+    kurtosis = Column(Numeric(), nullable=False)
+

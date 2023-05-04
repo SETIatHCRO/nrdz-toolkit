@@ -27,6 +27,7 @@ setup_args = {
     "install_requires": [
         "alembic",
         "astropy",
+        "geoalchemy2",
         "numpy",
         "psycopg2-binary",
         "redis",

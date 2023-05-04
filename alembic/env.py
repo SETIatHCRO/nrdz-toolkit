@@ -1,5 +1,6 @@
 from alembic import context
 from sqlalchemy import engine_from_config, pool
+from geoalchemy2 import alembic_helpers
 from logging.config import fileConfig
 import os.path as op
 import json
@@ -11,7 +12,7 @@ config = context.config
 
 # this will overwrite the init file sqlalchemy.url
 
-db_url = "mysql://root:nrdz-db123@localhost/nrdz"
+db_url = "postgresql://nrdz:nrdz-db123@localhost:5432/nrdz"
 config.set_main_option("sqlalchemy.url", db_url)
 
 # Interpret the config file for Python logging.
@@ -42,7 +43,14 @@ def run_migrations_offline():
 
     """
     url = config.get_main_option("sqlalchemy.url")
-    context.configure(url=url, target_metadata=target_metadata, literal_binds=True)
+    context.configure(
+            url=url, 
+            target_metadata=target_metadata, 
+            literal_binds=True,
+            include_object=alembic_helpers.include_object,
+            process_revision_directives=alembic_helpers.writer,
+            render_item=alembic_helpers.render_item
+    )
 
     with context.begin_transaction():
         context.run_migrations()
@@ -62,7 +70,13 @@ def run_migrations_online():
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+                connection=connection, 
+                target_metadata=target_metadata,
+                include_object=alembic_helpers.include_object,
+                process_revision_directives=alembic_helpers.writer,
+                render_item=alembic_helpers.render_item
+        )
 
         with context.begin_transaction():
             context.run_migrations()
