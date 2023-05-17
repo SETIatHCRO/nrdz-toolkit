@@ -1,6 +1,5 @@
 alembic
 astropy
-numpy
 psycopg2-binary
 redis
 setuptools_scm

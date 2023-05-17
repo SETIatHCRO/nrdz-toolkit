@@ -1,17 +1,16 @@
 """initialized nrdz db
 
-Revision ID: 32fd0dc88ddb
+Revision ID: 76f1615a3ed8
 Revises: 
-Create Date: 2023-05-04 22:14:37.165991+00:00
+Create Date: 2023-05-16 17:48:06.992268+00:00
 
 """
 from alembic import op
 import sqlalchemy as sa
-from geoalchemy2 import Geometry
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '32fd0dc88ddb'
+revision = '76f1615a3ed8'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -54,9 +53,9 @@ def upgrade():
     sa.PrimaryKeyConstraint('mount_id'),
     sa.UniqueConstraint('nfs_mnt')
     )
-    op.create_geospatial_table('hardware',
+    op.create_table('hardware',
     sa.Column('hardware_id', sa.Integer(), sa.Identity(always=True), nullable=False),
-    sa.Column('location', Geometry(geometry_type='POINT', spatial_index=False, from_text='ST_GeomFromEWKT', name='geometry'), nullable=False),
+    sa.Column('location', sa.String(length=100), nullable=False),
     sa.Column('enclosure', sa.Boolean(), nullable=False),
     sa.Column('op_status', sa.Integer(), nullable=False),
     sa.Column('mount_id', sa.Integer(), nullable=False),
@@ -64,7 +63,6 @@ def upgrade():
     sa.ForeignKeyConstraint(['op_status'], ['status_codes.code_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('hardware_id')
     )
-    op.create_geospatial_index('idx_hardware_location', 'hardware', ['location'], unique=False, postgresql_using='gist', postgresql_ops={})
     op.create_table('recordings',
     sa.Column('recording_id', sa.Integer(), sa.Identity(always=True), nullable=False),
     sa.Column('hardware_id', sa.Integer(), nullable=False),
@@ -74,6 +72,8 @@ def upgrade():
     sa.Column('survey_id', sa.CHAR(length=6), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('entered_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('flag', sa.Boolean(), nullable=False),
+    sa.Column('comments', sa.Text(), nullable=True),
     sa.ForeignKeyConstraint(['hardware_id'], ['hardware.hardware_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['metadata_id'], ['metadata.metadata_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('recording_id'),
@@ -88,7 +88,7 @@ def upgrade():
     sa.Column('os_v', sa.String(length=255), nullable=False),
     sa.Column('memory', sa.BigInteger(), nullable=False),
     sa.Column('storage_cap', sa.BigInteger(), nullable=False),
-    sa.Column('cpu_type', sa.Integer(), nullable=False),
+    sa.Column('cpu_type', sa.String(length=255), nullable=False),
     sa.Column('cpu_cores', sa.Integer(), nullable=False),
     sa.Column('op_status', sa.Integer(), nullable=False),
     sa.Column('hardware_id', sa.Integer(), nullable=False),
@@ -160,6 +160,7 @@ def upgrade():
     sa.Column('median_db', sa.Numeric(precision=21, scale=16), nullable=False),
     sa.Column('std_dev', sa.Numeric(), nullable=False),
     sa.Column('kurtosis', sa.Numeric(), nullable=False),
+    sa.Column('output_path', sa.String(length=255), nullable=True),
     sa.ForeignKeyConstraint(['recording_id'], ['recordings.recording_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('output_id'),
     sa.UniqueConstraint('recording_id')
@@ -175,8 +176,7 @@ def downgrade():
     op.drop_table('sdr')
     op.drop_table('rpi')
     op.drop_table('recordings')
-    op.drop_geospatial_index('idx_hardware_location', table_name='hardware', postgresql_using='gist', column_name='location')
-    op.drop_geospatial_table('hardware')
+    op.drop_table('hardware')
     op.drop_table('storage')
     op.drop_table('status_codes')
     op.drop_table('metadata')
