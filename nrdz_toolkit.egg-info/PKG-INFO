@@ -6,6 +6,9 @@ Home-page: https://github.com/i
 Author: David R. DeBoer
 Author-email: ddeboer@berkeley.edu
 License: BSD
+Description: This repository has tools to handle NRDZ data.
+        
+Platform: UNKNOWN
 Classifier: Development Status :: 4 - Beta
 Classifier: Environment :: Console
 Classifier: Intended Audience :: Science/Research
@@ -15,8 +18,6 @@ Classifier: Programming Language :: Python
 Classifier: Programming Language :: Python :: 3.6
 Classifier: Programming Language :: Python :: 3.7
 Classifier: Topic :: Scientific/Engineering
-Provides-Extra: sqlite
 Provides-Extra: all
 Provides-Extra: dev
-
-This repository has tools to handle NRDZ data.
+Provides-Extra: sqlite

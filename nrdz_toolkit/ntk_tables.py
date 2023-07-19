@@ -22,27 +22,9 @@ from sqlalchemy import (
         UniqueConstraint
     )
 from sqlalchemy.dialects.postgresql import INET, MACADDR
+from sqlalchemy.sql import func
 from . import CMDeclarativeBase, NotNull
 import copy
-
-class status_codes(CMDeclarativeBase):
-    """
-    The operational statuses of a sensor using a system of
-    integers ranging from 0-9, with each integer corresponding to a
-    different status.
-
-    Attributes:
-    -----------
-    code_id : Integer Column
-        Integer from 0-9. Primary key.
-    description : Text Column
-        Status description.
-    """
-
-    __tablename__ = "status_codes"
-    
-    code_id = Column(Integer(), nullable=False, primary_key=True)
-    description = Column(Text(), nullable=False)
 
 class storage(CMDeclarativeBase):
     """
@@ -169,7 +151,7 @@ class status(CMDeclarativeBase):
 
     status_id = Column(BigInteger(), Identity(always=True), primary_key=True)
     hostname = Column(String(100), nullable=False)
-    time = Column(DateTime(timezone=True), primary_key=True)
+    time = Column(DateTime(timezone=True), default=func.current_timestamp())
     rpi_cpu_temp = Column(Numeric(), nullable=False)
     sdr_temp = Column(Numeric(), nullable=False)
     avg_cpu_usage = Column(Numeric(), nullable=False)
@@ -348,56 +330,36 @@ class metadata(CMDeclarativeBase):
     """
 
     __tablename__ = "metadata"
+
+    __table_args__ = (
+            UniqueConstraint(
+                'frequency',
+                'sample_rate',
+                'bandwidth',
+                'gain',
+                'length',
+                'interval',
+                'bit_depth',
+                name = 'metadata_unique_key'
+            ),
+        )
     
     metadata_id = Column(Integer(), Identity(always=True), primary_key=True)
-    org = Column(String(100), nullable=False, unique=True)
-    frequency = Column(BigInteger(), nullable=False, unique=True)
-    sample_rate = Column(BigInteger(), nullable=False, unique=True)
-    bandwidth = Column(BigInteger(), nullable=False, unique=True)
-    gain = Column(Integer(), nullable=False, unique=True)
-    length = Column(Numeric(), nullable=False, unique=True)
-    interval = Column(Numeric(), nullable=False, unique=True)
-    bit_depth = Column(String(10), nullable=True, unique=True)
+    frequency = Column(BigInteger(), nullable=False)
+    sample_rate = Column(BigInteger(), nullable=False)
+    bandwidth = Column(BigInteger(), nullable=False)
+    gain = Column(Integer(), nullable=False)
+    length = Column(Numeric(), nullable=False)
+    interval = Column(Numeric(), nullable=False)
+    bit_depth = Column(String(10), nullable=True)
 
-    #uc_metadata = UniqueConstraint(
-    #        "org", 
-    #        "frequency", 
-    #        "sample_rate", 
-    #        "bandwidth", 
-    #        "gain",
-    #        "length",
-    #        "interval",
-    #        "bit_depth"
-    #)
-
-class recordings(CMDeclarativeBase):
+class outputs(CMDeclarativeBase):
     """
-    Table outlining the data structure of the sensors.
-
-    Attributes:
-    -----------
-    id : String Column
-        Identification for each sensor. The id is of notation 'hns-XXX'
-        where hns = Hcro-Nrdz Sensor.
-    hardware_id : String Column
-        Foreign key from hardware table.
-    metadata_id : String Column
-        Foreign key from metadata table.
-    filename : String Column
-        Name of the recordings file.
-    filepath : String Column
-        Recordings file location.
-    created_at : Timestamp
-        Time at which the data file was created.
-    entered_at : Timestamp
-        Time at which the data file was entered into the server.
-    survey_id : String Column
-        Observing group that the data file was a part of.
+    XXX DESCRIPTION NEEDED
     """
+    __tablename__ = "outputs"
 
-    __tablename__ = "recordings"
-    
-    recording_id = Column(Integer(),Identity(always=True), primary_key=True)
+    output_id = Column(BigInteger(), Identity(always=True), primary_key=True)
     hardware_id = Column(
             Integer(), 
             ForeignKey(
@@ -416,35 +378,10 @@ class recordings(CMDeclarativeBase):
             ), 
             nullable=False
         )
-    filename = Column(String(100), nullable=False, unique=True)
-    filepath = Column(String(255), nullable=False)
-    survey_id = Column(CHAR(6), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False)
-    entered_at = Column(DateTime(timezone=True), nullable=False)
-    flag = Column(Boolean(), nullable=False)
-    comments = Column(Text(), nullable=True)
-    
-class outputs(CMDeclarativeBase):
-    """
-    XXX DESCRIPTION NEEDED
-    """
-    __tablename__ = "outputs"
-
-    output_id = Column(BigInteger(), Identity(always=True), primary_key=True)
-    recording_id = Column(
-            Integer(), 
-            ForeignKey(
-                "recordings.recording_id",
-                onupdate="CASCADE",
-                ondelete="CASCADE"
-            ), 
-            nullable=False, 
-            unique=True
-        )
     average_db = Column(Numeric(21,16), nullable=False)
     max_db = Column(Numeric(21,16), nullable=False)
     median_db = Column(Numeric(21,16), nullable=False)
     std_dev = Column(Numeric(), nullable=False)
     kurtosis = Column(Numeric(), nullable=False)
-    output_path = Column(String(255), nullable=True)
 

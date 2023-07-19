@@ -12,8 +12,6 @@ from sqlalchemy import desc, asc
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import func
 from astropy.time import Time
-from .ntk_tables import hardware, metadata, recordings
-
 
 class CMSession(Session):
     """Primary session object that handles most DB queries."""

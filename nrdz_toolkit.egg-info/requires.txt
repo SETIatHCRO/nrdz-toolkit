@@ -15,11 +15,11 @@ tabulate
 [dev]
 h5py
 pandas
+pre-commit
 psutil
+pytest
 python-dateutil
 tabulate
-pytest
-pre-commit
 
 [sqlite]
 tabulate
