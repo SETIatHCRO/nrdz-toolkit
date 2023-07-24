@@ -1,8 +1,8 @@
-"""empty message
+"""initialized db
 
-Revision ID: 755f4357d8bb
+Revision ID: fe568344379b
 Revises: 
-Create Date: 2023-07-13 21:09:03.977772+00:00
+Create Date: 2023-07-24 19:16:38.011293+00:00
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '755f4357d8bb'
+revision = 'fe568344379b'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -30,18 +30,12 @@ def upgrade():
     sa.PrimaryKeyConstraint('metadata_id'),
     sa.UniqueConstraint('frequency', 'sample_rate', 'bandwidth', 'gain', 'length', 'interval', 'bit_depth', name='metadata_unique_key')
     )
-    op.create_table('status_codes',
-    sa.Column('code_id', sa.Integer(), nullable=False),
-    sa.Column('description', sa.Text(), nullable=False),
-    sa.PrimaryKeyConstraint('code_id')
-    )
     op.create_table('storage',
     sa.Column('mount_id', sa.Integer(), sa.Identity(always=True), nullable=False),
     sa.Column('nfs_mnt', sa.String(length=255), nullable=False),
     sa.Column('local_mnt', sa.String(length=255), nullable=False),
     sa.Column('storage_cap', sa.BigInteger(), nullable=False),
     sa.Column('op_status', sa.Integer(), nullable=False),
-    sa.ForeignKeyConstraint(['op_status'], ['status_codes.code_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('mount_id'),
     sa.UniqueConstraint('nfs_mnt')
     )
@@ -52,7 +46,6 @@ def upgrade():
     sa.Column('op_status', sa.Integer(), nullable=False),
     sa.Column('mount_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['mount_id'], ['storage.mount_id'], onupdate='CASCADE', ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['op_status'], ['status_codes.code_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('hardware_id')
     )
     op.create_table('outputs',
@@ -65,7 +58,6 @@ def upgrade():
     sa.Column('median_db', sa.Numeric(precision=21, scale=16), nullable=False),
     sa.Column('std_dev', sa.Numeric(), nullable=False),
     sa.Column('kurtosis', sa.Numeric(), nullable=False),
-    sa.Column('output_path', sa.String(length=255), nullable=True),
     sa.ForeignKeyConstraint(['hardware_id'], ['hardware.hardware_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['metadata_id'], ['metadata.metadata_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('output_id')
@@ -84,7 +76,6 @@ def upgrade():
     sa.Column('op_status', sa.Integer(), nullable=False),
     sa.Column('hardware_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['hardware_id'], ['hardware.hardware_id'], onupdate='CASCADE', ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['op_status'], ['status_codes.code_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('rpi_id'),
     sa.UniqueConstraint('hostname')
     )
@@ -96,7 +87,6 @@ def upgrade():
     sa.Column('op_status', sa.Integer(), nullable=False),
     sa.Column('hardware_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['hardware_id'], ['hardware.hardware_id'], onupdate='CASCADE', ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['op_status'], ['status_codes.code_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('sdr_id'),
     sa.UniqueConstraint('sdr_serial')
     )
@@ -139,7 +129,6 @@ def upgrade():
     sa.Column('op_status', sa.Integer(), nullable=False),
     sa.Column('hardware_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['hardware_id'], ['hardware.hardware_id'], onupdate='CASCADE', ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['op_status'], ['status_codes.code_id'], onupdate='CASCADE', ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('wr_id'),
     sa.UniqueConstraint('wr_serial')
     )
@@ -155,6 +144,5 @@ def downgrade():
     op.drop_table('outputs')
     op.drop_table('hardware')
     op.drop_table('storage')
-    op.drop_table('status_codes')
     op.drop_table('metadata')
     # ### end Alembic commands ###

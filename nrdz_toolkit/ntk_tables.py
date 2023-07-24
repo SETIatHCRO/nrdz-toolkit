@@ -51,15 +51,7 @@ class storage(CMDeclarativeBase):
     nfs_mnt = Column(String(255), nullable=False, unique=True)
     local_mnt = Column(String(255), nullable=False)
     storage_cap = Column(BigInteger(), nullable=False)
-    op_status = Column(
-            Integer(), 
-            ForeignKey(
-                "status_codes.code_id", 
-                onupdate="CASCADE", 
-                ondelete="CASCADE"
-            ), 
-            nullable=False
-        )
+    op_status = Column(Integer(), nullable=False)
 
 class hardware(CMDeclarativeBase):
     """
@@ -85,15 +77,7 @@ class hardware(CMDeclarativeBase):
     hardware_id = Column(Integer(), Identity(always=True), primary_key=True)
     location = Column(String(100), nullable=False)
     enclosure = Column(Boolean(), nullable=False)
-    op_status = Column(
-            Integer(),
-            ForeignKey(
-                "status_codes.code_id",
-                onupdate="CASCADE",
-                ondelete="CASCADE"
-            ),
-            nullable=False
-        )
+    op_status = Column(Integer(), nullable=False)
     mount_id = Column(
             Integer(), 
             ForeignKey(
@@ -218,15 +202,7 @@ class rpi(CMDeclarativeBase):
     storage_cap = Column(BigInteger(), nullable=False)
     cpu_type = Column(String(255), nullable=False)
     cpu_cores = Column(Integer(), nullable=False)
-    op_status = Column(
-            Integer(), 
-            ForeignKey(
-                "status_codes.code_id",
-                onupdate="CASCADE",
-                ondelete="CASCADE"
-            ), 
-            nullable=False
-        )
+    op_status = Column(Integer(), nullable=False)
     hardware_id = Column(
             Integer(), 
             ForeignKey(
@@ -248,15 +224,7 @@ class sdr(CMDeclarativeBase):
     sdr_serial = Column(CHAR(7), nullable=False, unique=True)
     mboard_name = Column(String(255), nullable=False)
     external_clock = Column(Boolean(), nullable=False)
-    op_status = Column(
-            Integer(), 
-            ForeignKey(
-                "status_codes.code_id",
-                onupdate="CASCADE",
-                ondelete="CASCADE"
-            ), 
-            nullable=False
-        )
+    op_status = Column(Integer(), nullable=False)
     hardware_id = Column(
             Integer(), 
             ForeignKey(
@@ -280,15 +248,7 @@ class wrlen(CMDeclarativeBase):
     wr_mac = Column(MACADDR(), nullable=True)
     mode = Column(String(100), nullable=True)
     wr_host = Column(String(100), nullable=True)
-    op_status = Column(
-            Integer(), 
-            ForeignKey(
-                "status_codes.code_id",
-                onupdate="CASCADE",
-                ondelete="CASCADE"
-            ), 
-            nullable=False
-        )
+    op_status = Column(Integer(), nullable=False)
     hardware_id = Column(
             Integer(), 
             ForeignKey(
