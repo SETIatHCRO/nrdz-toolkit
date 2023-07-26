@@ -19,8 +19,8 @@ data_size = 2000 # Small data size for quick testing so you don't sit around wai
 # Speed of light
 c = 3e8
 n_sources = 2 # Number of sources
-src1_el = 45 # First source's elevation
-src1_az = 45 # First source's azimuth
+src1_el = 44 # First source's elevation
+src1_az = 44 # First source's azimuth
 ang_spread = 40 # The angle spread between sources
 
 # File path
@@ -314,7 +314,7 @@ def main():
     tbin = 1/samp_rate # Time between samples
     full_band = 20e6 # Full bandwidth in Hz
     n_points = 100 # Number of points of FFT
-    n_ants = 49 # 5 # Number of sensors/antennas
+    n_ants = 5 #49 # 5 # Number of sensors/antennas
     if data_size == 20000000:
         n_ints = 100 # Number of time samples to integrate
     elif data_size == 2000:

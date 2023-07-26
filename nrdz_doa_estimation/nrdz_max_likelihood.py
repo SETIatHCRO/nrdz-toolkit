@@ -18,10 +18,22 @@ from numpy.linalg import matrix_rank
 data_size = 2000 # Small data size for quick testing so you don't sit around waiting forever 
 # Speed of light
 c = 3e8
-n_sources = 2 # Number of sources
+n_sources = 1 # Number of sources
 src1_el = 45 # First source's elevation
 src1_az = 45 # First source's azimuth
-ang_spread = 30 # The angle spread between sources
+ang_spread_el = 15 # 0.09 # The angle spread between sources in elevation
+ang_spread_az = 15 # 0.09 # The angle spread between sources in azimuth
+deg_range = 90 # Number of coordinates being scanned/analyzed/plotted
+
+center_el = 45 # Center elevation of map/field of view
+center_az = 45 # Center azimuth of map/field of view
+half_range = 0.2 # Half of the full range of coordinates on an axis
+min_el = center_el - half_range # Minimum elevation along axis
+max_el = center_el + half_range # Maximum elevation along axis
+el_interval = (max_el-min_el)/(deg_range-1) # Interval between neighboring elevation coordinates. The minus 1 in the denominator is to accomodate the way linspace calculates the interval
+min_az = center_az - half_range # Minimum azimuth along axis
+max_az = center_az + half_range # Maximum azimuth along axis
+az_interval = (max_az-min_az)/(deg_range-1) # Interval between neighboring azimuth coordinates. The minus 1 in the denominator is to accomodate the way linspace calculates the interval
 
 # File path
 filepath = "/mnt/datab-netStorage-1G/sync/"
@@ -30,7 +42,7 @@ extension = ".sc16"
 
 def coordinate_calculation(sensor_idx, sensor1_lat, sensor2_lat, deltaLat, deltaLng):
     # List of sensors other than north
-    sensors = ["rooftop", "gate", "chime", "west"]
+    sensors = ["rooftop", "gate", "chime", "west", "nuevo"]
     
     # Calculate distance between points
     a = np.sin(deltaLat/2)*np.sin(deltaLat/2) + np.cos(sensor2_lat)*np.cos(sensor1_lat)*np.sin(deltaLng/2)*np.sin(deltaLng/2)
@@ -74,7 +86,7 @@ def north_rooftop_cartesian_estimates():
     sensor_idx = 0
     r_rooftop = coordinate_calculation(sensor_idx, north_lat, rooftop_lat, deltaLat_nr, deltaLng_nr)
     
-    return r_rooftop 
+    return r_rooftop
 
 def north_gate_cartesian_estimates():
     # Sensor 5, North (Reference sensor)
@@ -130,6 +142,24 @@ def north_west_cartesian_estimates():
     
     return r_west
 
+def north_nuevo_cartesian_estimates():
+    # Sensor 5, North (Reference sensor)
+    north_lat = 40.8216550*np.pi/180 #40.4902*np.pi/180
+    north_lng = -121.4682424*np.pi/180 #121.2808*np.pi/180
+
+    # Senor 7, nuevo
+    nuevo_lat = 40.8242*np.pi/180 #40.4932*np.pi/180
+    nuevo_lng = -121.4700*np.pi/180 #121.2812*np.pi/180
+
+    # Change in latitude and longitude of north and rooftop
+    deltaLat_nn = north_lat - nuevo_lat
+    deltaLng_nn = north_lng - nuevo_lng
+
+    sensor_idx = 4
+    r_nuevo = coordinate_calculation(sensor_idx, north_lat, nuevo_lat, deltaLat_nn, deltaLng_nn)
+    
+    return r_nuevo
+
 # Generate synthetic data
 def synthetic_data(freq, tbin, rx, ry, rz):
     x_comp = np.zeros([data_size]) + 1j*np.zeros([data_size]) # Complex data array
@@ -145,13 +175,15 @@ def synthetic_data(freq, tbin, rx, ry, rz):
     noise = np.random.normal(loc=0, scale=1, size=data_size) + 1j*np.random.normal(loc=0, scale=1, size=data_size)
     #noise = np.zeros([data_size]) + 1j*np.zeros([data_size]) 
     srcs = 0
+    hpbw = 1
+    A = 1
     for t in range(0, data_size):
         srcs = 0
         prev_srcs = 0
         for p in range(0, n_sources):
             # Calculate el and az for each time sample of each source
-            el[t,p] = (src1_el + (ang_spread*p) + samp_el_offset*t)*np.pi/180
-            az[t,p] = (src1_az + (ang_spread*p) + samp_az_offset*t)*np.pi/180
+            el[t,p] = (src1_el + (ang_spread_el*p) + samp_el_offset*t)*np.pi/180
+            az[t,p] = (src1_az + (ang_spread_az*p) + samp_az_offset*t)*np.pi/180
             # Calculate ideal array steering vector using the array_manifold_vector() function
             phase = (-1*w/c)*(\
             rx*np.sin(el[t,p])*np.cos(az[t,p])\
@@ -160,8 +192,9 @@ def synthetic_data(freq, tbin, rx, ry, rz):
             s[t,p] = np.exp(1j*((w*t*tbin) + (phase%(2*np.pi))))
             #s[t,p] = np.sinc(freq*t*tbin)*np.exp(1j*phase)
             # ------------------Add noise---------------
+            #A = np.exp(-2*(np.log(2)*pow(el[t,p],2)/pow(hpbw,2)))
             # Sum all source signals
-            srcs += s[t,p]
+            srcs += A*s[t,p]
             
         # Assign srcs to signal vector
         #x_comp[t] = srcs + noise[t]
@@ -295,17 +328,32 @@ def estimate_sample_covariance(x, n_ants, n_samps, n_points, n_ints):
 def array_manifold_vector(elevation, azimuth, rx, ry, rz, f, n_ants):
     # Angular frequency
     w = 2*np.pi*f
+    #el = (src1_el-half_range + el_interval*elevation)*np.pi/180
+    #az = (src1_az-half_range + az_interval*azimuth)*np.pi/180
+    
     el = elevation*np.pi/180
     az = azimuth*np.pi/180
     
     a = np.zeros([n_ants,1]) + 1j*np.zeros([n_ants,1])
+    
+    # I believe I need to add the phase correction here
+    # The phase added to remove the fringe function does not need to be added when live data or simulated earth rotation is NOT being read
+    # But if earth is assumed to be rotating, the fringe function can be removed by adding a geometric delay to shift back to phase center by
+    #    tau_geo = 
+    #    where w_e = 7.3e-5 rad/s which is the angular rotation frequency of the earth
+    # For the NRDZ sensors, the phase center cannot be chosen since they cannot be electronically steered. They are at fixed positions
     
     if n_ants == 1:
         for i in  range(0,n_ants):
             a[i] = np.exp((-1j*w/c)*(rx*np.sin(el)*np.cos(az) + ry*np.sin(el)*np.sin(az) + rz*np.cos(el)))
     else:
         for i in  range(0,n_ants):
-            a[i] = np.exp((-1j*w/c)*(rx[i]*np.sin(el)*np.cos(az) + ry[i]*np.sin(el)*np.sin(az) + rz[i]*np.cos(el)))
+            tau_instrumental = 0#(rx[i]*np.sin(src1_el)*np.cos(src1_az) + ry[i]*np.sin(src1_el)*np.sin(src1_az) + rz[i]*np.cos(src1_el))
+            a[i] = np.exp((-1j*w/c)*((rx[i]*np.sin(el)*np.cos(az) + ry[i]*np.sin(el)*np.sin(az) + rz[i]*np.cos(el)) + tau_instrumental))
+            if i == 2:
+                tau = (rx[i]*np.sin(el)*np.cos(az) + ry[i]*np.sin(el)*np.sin(az) + rz[i]*np.cos(el))/c
+        #print("tau of north chime baseline = " + str(tau))
+    #print("tau instrumental = " + str(tau_instrumental))
     
     return a
      
@@ -315,14 +363,14 @@ def main():
     #freq = 1e3
     samp_rate = 20e6#8*freq # Sample rate of synthesized signal
     tbin = 1/samp_rate # Time between samples
-    full_band = 20e6 # Full bandwidth in Hz
+    full_band = samp_rate #20e6 # Full bandwidth in Hz
     n_points = 100 # Number of points of FFT
-    n_ants = 49 # Number of sensors/antennas
+    n_ants = 6 #49 # Number of sensors/antennas
     if data_size == 20000000:
         n_ints = 100 # Number of time samples to integrate
     elif data_size == 2000:
         if n_points == 100:
-            n_ints = 10 # Number of time samples to integrate
+            n_ints = 20 # Number of time samples to integrate
         elif n_points == 1:
             n_ints = 100
     else:
@@ -335,128 +383,133 @@ def main():
     r_gate = north_gate_cartesian_estimates()
     r_chime = north_chime_cartesian_estimates()
     r_west = north_west_cartesian_estimates()
+    r_nuevo = north_nuevo_cartesian_estimates()
     coordinate_scaling = 1
-    if n_ants == 5:
+    if n_ants == 6:
         rx = np.zeros(n_ants)
         rx[0] = 0
         rx[1] = r_rooftop[0]/coordinate_scaling
         rx[2] = r_gate[0]/coordinate_scaling
         rx[3] = r_chime[0]/coordinate_scaling
         rx[4] = r_west[0]/coordinate_scaling
+        rx[5] = r_nuevo[0]/coordinate_scaling
         ry = np.zeros(n_ants)
         ry[0] = 0
         ry[1] = r_rooftop[1]/coordinate_scaling
         ry[2] = r_gate[1]/coordinate_scaling
         ry[3] = r_chime[1]/coordinate_scaling
         ry[4] = r_west[1]/coordinate_scaling
+        ry[5] = r_nuevo[1]/coordinate_scaling
         rz = np.zeros(n_ants)
     elif n_ants > 5:
+        scale_baseline = 1
         rx = np.zeros(n_ants)
         rx[0] = 0
-        rx[1] = 1*(c/freq)/2
-        rx[2] = 1*(c/freq)/2
-        rx[3] = -1*(c/freq)/2
-        rx[4] = -1*(c/freq)/2
-        rx[5] = 1*(c/freq)/2 
-        rx[6] = -1*(c/freq)/2
+        rx[1] = 1*scale_baseline*(c/freq)/2
+        rx[2] = 1*scale_baseline*(c/freq)/2
+        rx[3] = -1*scale_baseline*(c/freq)/2
+        rx[4] = -1*scale_baseline*(c/freq)/2
+        rx[5] = 1*scale_baseline*(c/freq)/2 
+        rx[6] = -1*scale_baseline*(c/freq)/2
         rx[7] = 0 
         rx[8] = 0 
-        rx[9] = 1*(c/freq)/2
-        rx[10] = 1*(c/freq)/2
-        rx[11] = -1*(c/freq)/2
-        rx[12] = -1*(c/freq)/2
+        rx[9] = 1*scale_baseline*(c/freq)/2
+        rx[10] = 1*scale_baseline*(c/freq)/2
+        rx[11] = -1*scale_baseline*(c/freq)/2
+        rx[12] = -1*scale_baseline*(c/freq)/2
         rx[13] = 0
         rx[14] = 0
-        rx[15] = 2*(c/freq)/2
-        rx[16] = 2*(c/freq)/2
-        rx[17] = -2*(c/freq)/2
-        rx[18] = -2*(c/freq)/2
-        rx[19] = 2*(c/freq)/2
-        rx[20] = -2*(c/freq)/2
-        rx[21] = 2*(c/freq)/2
-        rx[22] = -2*(c/freq)/2
-        rx[23] = 2*(c/freq)/2
-        rx[24] = -2*(c/freq)/2
+        rx[15] = 2*scale_baseline*(c/freq)/2
+        rx[16] = 2*scale_baseline*(c/freq)/2
+        rx[17] = -2*scale_baseline*(c/freq)/2
+        rx[18] = -2*scale_baseline*(c/freq)/2
+        rx[19] = 2*scale_baseline*(c/freq)/2
+        rx[20] = -2*scale_baseline*(c/freq)/2
+        rx[21] = 2*scale_baseline*(c/freq)/2
+        rx[22] = -2*scale_baseline*(c/freq)/2
+        rx[23] = 2*scale_baseline*(c/freq)/2
+        rx[24] = -2*scale_baseline*(c/freq)/2
         rx[25] = 0
         rx[26] = 0
-        rx[27] = 3*(c/freq)/2
-        rx[28] = -3*(c/freq)/2
-        rx[29] = 1*(c/freq)/2
-        rx[30] = 1*(c/freq)/2
-        rx[31] = -1*(c/freq)/2
-        rx[32] = -1*(c/freq)/2
-        rx[33] = 2*(c/freq)/2
-        rx[34] = 2*(c/freq)/2
-        rx[35] = -2*(c/freq)/2
-        rx[36] = -2*(c/freq)/2
-        rx[37] = 3*(c/freq)/2
-        rx[38] = 3*(c/freq)/2
-        rx[39] = -3*(c/freq)/2
-        rx[40] = -3*(c/freq)/2
-        rx[41] = 3*(c/freq)/2
-        rx[42] = 3*(c/freq)/2
-        rx[43] = -3*(c/freq)/2
-        rx[44] = -3*(c/freq)/2
-        rx[45] = 3*(c/freq)/2
-        rx[46] = 3*(c/freq)/2
-        rx[47] = -3*(c/freq)/2
-        rx[48] = -3*(c/freq)/2
+        rx[27] = 3*scale_baseline*(c/freq)/2
+        rx[28] = -3*scale_baseline*(c/freq)/2
+        rx[29] = 1*scale_baseline*(c/freq)/2
+        rx[30] = 1*scale_baseline*(c/freq)/2
+        rx[31] = -1*scale_baseline*(c/freq)/2
+        rx[32] = -1*scale_baseline*(c/freq)/2
+        rx[33] = 2*scale_baseline*(c/freq)/2
+        rx[34] = 2*scale_baseline*(c/freq)/2
+        rx[35] = -2*scale_baseline*(c/freq)/2
+        rx[36] = -2*scale_baseline*(c/freq)/2
+        rx[37] = 3*scale_baseline*(c/freq)/2
+        rx[38] = 3*scale_baseline*(c/freq)/2
+        rx[39] = -3*scale_baseline*(c/freq)/2
+        rx[40] = -3*scale_baseline*(c/freq)/2
+        rx[41] = 3*scale_baseline*(c/freq)/2
+        rx[42] = 3*scale_baseline*(c/freq)/2
+        rx[43] = -3*scale_baseline*(c/freq)/2
+        rx[44] = -3*scale_baseline*(c/freq)/2
+        rx[45] = 3*scale_baseline*(c/freq)/2
+        rx[46] = 3*scale_baseline*(c/freq)/2
+        rx[47] = -3*scale_baseline*(c/freq)/2
+        rx[48] = -3*scale_baseline*(c/freq)/2
         ry = np.zeros(n_ants)
         ry[0] = 0
-        ry[1] = 1*(c/freq)/2
-        ry[2] = -1*(c/freq)/2
-        ry[3] = 1*(c/freq)/2
-        ry[4] = -1*(c/freq)/2
+        ry[1] = 1*scale_baseline*(c/freq)/2
+        ry[2] = -1*scale_baseline*(c/freq)/2
+        ry[3] = 1*scale_baseline*(c/freq)/2
+        ry[4] = -1*scale_baseline*(c/freq)/2
         ry[5] = 0 
         ry[6] = 0
-        ry[7] = 1*(c/freq)/2 
-        ry[8] = -1*(c/freq)/2  
-        ry[9] = 2*(c/freq)/2  
-        ry[10] = -2*(c/freq)/2  
-        ry[11] = 2*(c/freq)/2  
-        ry[12] = -2*(c/freq)/2  
-        ry[13] = 2*(c/freq)/2  
-        ry[14] = -2*(c/freq)/2  
-        ry[15] = 2*(c/freq)/2  
-        ry[16] = -2*(c/freq)/2  
-        ry[17] = 2*(c/freq)/2  
-        ry[18] = -2*(c/freq)/2  
-        ry[19] = 1*(c/freq)/2  
-        ry[20] = 1*(c/freq)/2  
+        ry[7] = 1*scale_baseline*(c/freq)/2 
+        ry[8] = -1*scale_baseline*(c/freq)/2  
+        ry[9] = 2*scale_baseline*(c/freq)/2  
+        ry[10] = -2*scale_baseline*(c/freq)/2  
+        ry[11] = 2*scale_baseline*(c/freq)/2  
+        ry[12] = -2*scale_baseline*(c/freq)/2  
+        ry[13] = 2*scale_baseline*(c/freq)/2  
+        ry[14] = -2*scale_baseline*(c/freq)/2  
+        ry[15] = 2*scale_baseline*(c/freq)/2  
+        ry[16] = -2*scale_baseline*(c/freq)/2  
+        ry[17] = 2*scale_baseline*(c/freq)/2  
+        ry[18] = -2*scale_baseline*(c/freq)/2  
+        ry[19] = 1*scale_baseline*(c/freq)/2  
+        ry[20] = 1*scale_baseline*(c/freq)/2  
         ry[21] = 0  
         ry[22] = 0  
-        ry[23] = -1*(c/freq)/2  
-        ry[24] = -1*(c/freq)/2 
-        ry[25] = 3*(c/freq)/2
-        ry[26] = -3*(c/freq)/2
+        ry[23] = -1*scale_baseline*(c/freq)/2  
+        ry[24] = -1*scale_baseline*(c/freq)/2 
+        ry[25] = 3*scale_baseline*(c/freq)/2
+        ry[26] = -3*scale_baseline*(c/freq)/2
         ry[27] = 0
         ry[28] = 0
-        ry[29] = 3*(c/freq)/2
-        ry[30] = -3*(c/freq)/2
-        ry[31] = 3*(c/freq)/2
-        ry[32] = -3*(c/freq)/2
-        ry[33] = 3*(c/freq)/2
-        ry[34] = -3*(c/freq)/2
-        ry[35] = 3*(c/freq)/2
-        ry[36] = -3*(c/freq)/2
-        ry[37] = 3*(c/freq)/2
-        ry[38] = -3*(c/freq)/2
-        ry[39] = 3*(c/freq)/2
-        ry[40] = -3*(c/freq)/2
-        ry[41] = 2*(c/freq)/2
-        ry[42] = -2*(c/freq)/2
-        ry[43] = 2*(c/freq)/2
-        ry[44] = -2*(c/freq)/2
-        ry[45] = 1*(c/freq)/2
-        ry[46] = -1*(c/freq)/2
-        ry[47] = 1*(c/freq)/2
-        ry[48] = -1*(c/freq)/2
+        ry[29] = 3*scale_baseline*(c/freq)/2
+        ry[30] = -3*scale_baseline*(c/freq)/2
+        ry[31] = 3*scale_baseline*(c/freq)/2
+        ry[32] = -3*scale_baseline*(c/freq)/2
+        ry[33] = 3*scale_baseline*(c/freq)/2
+        ry[34] = -3*scale_baseline*(c/freq)/2
+        ry[35] = 3*scale_baseline*(c/freq)/2
+        ry[36] = -3*scale_baseline*(c/freq)/2
+        ry[37] = 3*scale_baseline*(c/freq)/2
+        ry[38] = -3*scale_baseline*(c/freq)/2
+        ry[39] = 3*scale_baseline*(c/freq)/2
+        ry[40] = -3*scale_baseline*(c/freq)/2
+        ry[41] = 2*scale_baseline*(c/freq)/2
+        ry[42] = -2*scale_baseline*(c/freq)/2
+        ry[43] = 2*scale_baseline*(c/freq)/2
+        ry[44] = -2*scale_baseline*(c/freq)/2
+        ry[45] = 1*scale_baseline*(c/freq)/2
+        ry[46] = -1*scale_baseline*(c/freq)/2
+        ry[47] = 1*scale_baseline*(c/freq)/2
+        ry[48] = -1*scale_baseline*(c/freq)/2
         rz = np.zeros(n_ants)
     
     print("Rooftop X and Y coordinates respectively: " + str(rx[1]) + " m and " + str(ry[1]) + " m")
     print("Gate X and Y coordinates respectively: " + str(rx[2]) + " m and " + str(ry[2]) + " m")
     print("Chime X and Y coordinates respectively: " + str(rx[3]) + " m and " + str(ry[3]) + " m")
     print("West X and Y coordinates respectively: " + str(rx[4]) + " m and " + str(ry[4]) + " m")
+    print("Nuevo X and Y coordinates respectively: " + str(rx[5]) + " m and " + str(ry[5]) + " m")
     
     data_flag = 0 # If set to 0, the script generates it's own data, and if set to 1, it reads a file
     sim_data_write = 1 # If set to 1, the script synthesizes data and writes it to a binary file to be read, and if set to 0, the simulated data is not written to and read from binary files
@@ -497,7 +550,6 @@ def main():
     R_hat = estimate_sample_covariance(X_agg, n_ants, n_samps, n_points, n_ints)
     
     # Estimate power spectrum over elevation and azimuth
-    deg_range = 90
     R_x = np.zeros([n_ants, n_ants]) + 1j*np.zeros([n_ants, n_ants])
     chan_idx = 50
     coarse_chan = full_band/n_points
@@ -528,23 +580,29 @@ def main():
     a_H = np.zeros([1,n_ants])
     P = np.zeros([n_ants,n_ants])
     Ld = np.zeros([deg_range,deg_range])
+    el_range = np.linspace(min_el, max_el,deg_range) # Range of elevation
+    az_range = np.linspace(min_az, max_az,deg_range) # Range of azimuth
     print("center_frequency = " + str(freq) + " f = " + str(f))
     
     print("Estimating power spectrum...")
     for el in range(0,deg_range):
         for az in range(0,deg_range):
-            a = array_manifold_vector(el, az, rx, ry, rz, f, n_ants)
+            #a = array_manifold_vector(el, az, rx, ry, rz, f, n_ants)
+            a = array_manifold_vector(el_range[el], az_range[az], rx, ry, rz, f, n_ants)
             a_H = np.transpose(np.conjugate(a))
             a_H_a = np.matmul(a_H,a)
             A_pinv = (1/a_H_a)*a_H
             P = np.matmul(a,A_pinv)
             P_perp = np.eye(n_ants,n_ants) - P
-            Ld[el,az] = np.log(np.trace(abs(np.matmul(P_perp,R_x))))
+            Ld[el,az] = -1*np.log(np.trace(abs(np.matmul(P_perp,R_x))))
             #P_den = abs(a_H.dot(np.linalg.inv(R_x)).dot(a))
             #P_den = abs(a_H.dot(np.linalg.inv(np.eye(n_ants,n_ants))).dot(a))
             #P_den = abs(np.dot(np.dot(a_H,np.linalg.inv(R_x)), a))
             #P[el,az] = 1/P_den
 
+    # Find the index of the azimuth angles corresponding to a particular source
+    az1_idx = np.where(abs(az_range-src1_az)==min(abs(az_range-src1_az)))[0]
+    az2_idx = np.where(abs(az_range-(src1_az+ang_spread_az))==min(abs(az_range-(src1_az+ang_spread_az))))[0]
     print("Size of a = " + str(a.shape))
     print("Size of a^H = " + str(a_H.shape))
     print("Size of a^H*a = " + str(a_H_a.shape))
@@ -556,25 +614,25 @@ def main():
     # Plot map of power estimate at a particular coarse channel
     # Note - origin="lower" ensures that the origin is the lower left corner
     plt.figure()
-    plt.imshow(Ld[0:deg_range,0:deg_range], origin="lower", extent=[0, deg_range, 0, deg_range], aspect='auto', interpolation='none')
+    plt.imshow(Ld[0:deg_range,0:deg_range], origin="lower", extent=[min(el_range), max(el_range), min(az_range), max(az_range)], aspect='auto', interpolation='none')
     plt.title("Maximum likelihood estimate of elevation and azimuth")
-    plt.ylabel("Elevation")
-    plt.xlabel("Azimuth")
+    plt.ylabel("Elevation (degrees)")
+    plt.xlabel("Azimuth (degrees)")
     plt.show()
     
     # Plot map of power estimate at a particular coarse channel
     plt.figure()
-    plt.plot(Ld[0:deg_range,src1_az])
-    plt.title("Maximum likelihood estimate over elevation at Az = " + str(src1_az) + " deg")
-    plt.ylabel("Probability of estimate")
-    plt.xlabel("Elevation")
+    plt.plot(az_range, Ld[0:deg_range,az1_idx[0]])
+    plt.title("Maximum likelihood estimate over elevation at Az = " + str(az1_idx[0]) + " deg")
+    plt.ylabel("Likelihood result (dB)")
+    plt.xlabel("Elevation (degrees)")
     plt.show()
     
     plt.figure()
-    plt.plot(Ld[0:deg_range,(src1_az+ang_spread)])
-    plt.title("Maximum likelihood estimate over elevation at Az = " + str(src1_az+ang_spread) + " deg")
-    plt.ylabel("Probability of estimate")
-    plt.xlabel("Elevation")
+    plt.plot(az_range, Ld[0:deg_range,az2_idx[0]])
+    plt.title("Maximum likelihood estimate over elevation at Az = " + str(az2_idx[0]) + " deg")
+    plt.ylabel("Likelihood result (dB)")
+    plt.xlabel("Elevation (degrees)")
     plt.show()
 
     end_time = time.time()
