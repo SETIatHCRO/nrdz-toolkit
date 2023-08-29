@@ -27,7 +27,7 @@ deg_range = 1000 # Number of coordinates being scanned/analyzed/plotted
 
 center_el = 45 # Center elevation of map/field of view
 center_az = 45 # Center azimuth of map/field of view
-half_range = 0.5 # Half of the full range of coordinates on an axis
+half_range = 2 # Half of the full range of coordinates on an axis
 min_el = center_el - half_range # Minimum elevation along axis
 max_el = center_el + half_range # Maximum elevation along axis
 el_interval = (max_el-min_el)/(deg_range-1) # Interval between neighboring elevation coordinates. The minus 1 in the denominator is to accomodate the way linspace calculates the interval
@@ -177,6 +177,7 @@ def synthetic_data(freq, tbin, rx, ry, rz):
     srcs = 0
     hpbw = 1
     A = 10
+    second_sig_freq = 0 #150e3
     for t in range(0, data_size):
         srcs = 0
         prev_srcs = 0
@@ -185,6 +186,10 @@ def synthetic_data(freq, tbin, rx, ry, rz):
             el[t,p] = (src1_el + (ang_spread_el*p) + samp_el_offset*t)*np.pi/180
             az[t,p] = (src1_az + (ang_spread_az*p) + samp_az_offset*t)*np.pi/180
             # Calculate ideal array steering vector using the array_manifold_vector() function
+            if p == 0:
+                w = 2*np.pi*freq
+            elif p == 1:
+                w = 2*np.pi*(freq+second_sig_freq)
             phase = (-1*w/c)*(\
             rx*np.sin(el[t,p])*np.cos(az[t,p])\
             + ry*np.sin(el[t,p])*np.sin(az[t,p])\
@@ -588,8 +593,10 @@ def main():
     
     a = np.zeros([n_ants,1])
     a_H = np.zeros([1,n_ants])
-    a_center = array_manifold_vector(center_el, center_az, rx, ry, rz, f, n_ants)
-    a_second = array_manifold_vector(center_el+ang_spread_el, center_az+ang_spread_az, rx, ry, rz, f, n_ants)
+    beam_el = center_el
+    beam_az = center_az
+    a_center = array_manifold_vector(beam_el, beam_az, rx, ry, rz, f, n_ants)
+    a_second = array_manifold_vector(beam_el+ang_spread_el, beam_az+ang_spread_az, rx, ry, rz, f, n_ants)
     P = np.zeros([n_ants,n_ants])
     Ld = np.zeros([deg_range,deg_range])
     ld = np.zeros([deg_range,deg_range])
@@ -633,7 +640,9 @@ def main():
         clean_image = clean_image - synthesized_beam - synthesized_beam1
     
     # Find the index of the azimuth angles corresponding to a particular source
+    el1_idx = np.where(abs(el_range-src1_el)==min(abs(el_range-src1_el)))[0]
     az1_idx = np.where(abs(az_range-src1_az)==min(abs(az_range-src1_az)))[0]
+    el2_idx = np.where(abs(el_range-(src1_el+ang_spread_el))==min(abs(el_range-(src1_el+ang_spread_el))))[0]
     az2_idx = np.where(abs(az_range-(src1_az+ang_spread_az))==min(abs(az_range-(src1_az+ang_spread_az))))[0]
     print("Size of a = " + str(a.shape))
     print("Size of a^H = " + str(a_H.shape))
@@ -653,21 +662,21 @@ def main():
     plt.show()
     
     plt.figure()
-    plt.imshow(ld[0:deg_range,0:deg_range], origin="lower", extent=[min(el_range), max(el_range), min(az_range), max(az_range)], aspect='auto', interpolation='none')
+    plt.imshow(ld[0:deg_range,0:deg_range], origin="lower", extent=[min(az_range), max(az_range), min(el_range), max(el_range)], aspect='auto', interpolation='none')
     plt.title("Maximum likelihood estimate of elevation and azimuth")
     plt.ylabel("Elevation (degrees)")
     plt.xlabel("Azimuth (degrees)")
     plt.show()
     
     plt.figure()
-    plt.imshow(synthesized_beam[0:deg_range,0:deg_range], origin="lower", extent=[min(el_range), max(el_range), min(az_range), max(az_range)], aspect='auto', interpolation='none')
+    plt.imshow(synthesized_beam[0:deg_range,0:deg_range], origin="lower", extent=[min(az_range), max(az_range), min(el_range), max(el_range)], aspect='auto', interpolation='none')
     plt.title("Synthesized beam (dirty beam) over elevation and azimuth")
     plt.ylabel("Elevation (degrees)")
     plt.xlabel("Azimuth (degrees)")
     plt.show()
     
     plt.figure()
-    plt.imshow(np.log(clean_image[0:deg_range,0:deg_range]), origin="lower", extent=[min(el_range), max(el_range), min(az_range), max(az_range)], aspect='auto', interpolation='none')
+    plt.imshow(np.log(clean_image[0:deg_range,0:deg_range]), origin="lower", extent=[min(az_range), max(az_range), min(el_range), max(el_range)], aspect='auto', interpolation='none')
     plt.title("Intensity distribution (clean image) over elevation and azimuth")
     plt.ylabel("Elevation (degrees)")
     plt.xlabel("Azimuth (degrees)")
@@ -675,17 +684,17 @@ def main():
     
     # Plot map of power estimate at a particular coarse channel
     plt.figure()
-    plt.plot(az_range, Ld[0:deg_range,az1_idx[0]])
-    plt.title("Maximum likelihood estimate over elevation at Az = " + str(az_range[az1_idx[0]]) + " deg")
+    plt.plot(az_range, Ld[el1_idx[0],0:deg_range])
+    plt.title("Maximum likelihood estimate over elevation at El = " + str(el_range[el1_idx[0]]) + " deg")
     plt.ylabel("Likelihood result (dB)")
-    plt.xlabel("Elevation (degrees)")
+    plt.xlabel("Azimuth (degrees)")
     plt.show()
     
     plt.figure()
-    plt.plot(az_range, Ld[0:deg_range,az2_idx[0]])
-    plt.title("Maximum likelihood estimate over elevation at Az = " + str(az_range[az2_idx[0]]) + " deg")
+    plt.plot(az_range, Ld[el2_idx[0],0:deg_range])
+    plt.title("Maximum likelihood estimate over elevation at El = " + str(el_range[el2_idx[0]]) + " deg")
     plt.ylabel("Likelihood result (dB)")
-    plt.xlabel("Elevation (degrees)")
+    plt.xlabel("Azimuth (degrees)")
     plt.show()
 
     end_time = time.time()
