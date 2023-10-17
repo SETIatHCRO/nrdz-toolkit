@@ -200,9 +200,9 @@ def synthetic_data(freq, tbin, rx, ry, rz):
             #A = np.exp(-2*(np.log(2)*pow(el[t,p],2)/pow(hpbw,2)))
             # Sum all source signals
             if p == 0:
-                A = 10
+                A = 1
             elif p == 1:
-                A = 10
+                A = 1
             srcs += A*s[t,p]
             
         # Assign srcs to signal vector

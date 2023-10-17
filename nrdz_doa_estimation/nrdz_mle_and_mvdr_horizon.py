@@ -24,7 +24,7 @@ n_sources = 1 # Number of sources
 src1_el = 90 #45 # First source's elevation
 src1_az = 45 # First source's azimuth
 ang_spread_el = 0 # 0.09 # The angle spread between sources in elevation
-ang_spread_az = 50 # 0.09 # The angle spread between sources in azimuth
+ang_spread_az = 35 # 0.09 # The angle spread between sources in azimuth
 deg_range = 10000 # Number of coordinates being scanned/analyzed/plotted
 
 center_el = 90 # Center elevation of map/field of view
@@ -38,7 +38,7 @@ max_az = center_az + half_range # Maximum azimuth along axis
 az_interval = (max_az-min_az)/(deg_range-1) # Interval between neighboring azimuth coordinates. The minus 1 in the denominator is to accomodate the way linspace calculates the interval
 
 # File path
-filepath = "/mnt/datab-netStorage-1G/sync/"
+filepath = "/mnt/primary-sis1-1G/nrdz/test/"
 # Extension of files
 extension = ".sc16"
 
@@ -202,9 +202,9 @@ def synthetic_data(freq, tbin, rx, ry, rz):
             #A = np.exp(-2*(np.log(2)*pow(el[t,p],2)/pow(hpbw,2)))
             # Sum all source signals
             if p == 0:
-                A = 100000
+                A = 10
             elif p > 0:
-                A = 100000
+                A = 10
             srcs += A*s[t,p]
             
         # Assign srcs to signal vector
@@ -294,8 +294,8 @@ def perform_FFT(complex_data, n_points):
     data_fft = np.zeros([n_samps, n_points]) + 1j*np.zeros([n_samps, n_points]) 
     # Perform N-point FFT on data with dimensions, NSAMPS x NPOINTS
     for i in range(0, n_samps):
-        #data_fft[i,:] = np.fft.fftshift(np.fft.fft(complex_data[(0+i*n_points):(n_points+i*n_points)]))
-        data_fft[i,:] = (np.fft.fft(complex_data[(0+i*n_points):(n_points+i*n_points)]))
+        data_fft[i,:] = np.fft.fftshift(np.fft.fft(complex_data[(0+i*n_points):(n_points+i*n_points)]))
+        #data_fft[i,:] = (np.fft.fft(complex_data[(0+i*n_points):(n_points+i*n_points)]))
     
     return data_fft 
 
@@ -372,8 +372,8 @@ def array_manifold_vector(elevation, azimuth, rx, ry, rz, f, n_ants):
     
 def main():
     start_time = time.time()
-    center_freq = 10e6
-    freq = 11e6 # Frequency of signal (one of them if there are multiple at different frequencies) being detected
+    center_freq = 1e3
+    freq = 1e3+1e6 # Frequency of signal (one of them if there are multiple at different frequencies) being detected
     #center_freq = 1e3
     samp_rate = 20e6#8*center_freq # Sample rate of synthesized signal
     tbin = 1/samp_rate # Time between samples
@@ -388,7 +388,7 @@ def main():
             narrowband_freqs[c] = f
         elif n_points == 1:
             f = center_freq
-    chan_idx = np.where(abs(narrowband_freqs-freq)==min(abs(narrowband_freqs-freq)))[0] # Narrowband frequency channe index
+    chan_idx = np.where(abs(narrowband_freqs-freq)==min(abs(narrowband_freqs-freq)))[0] # Narrowband frequency channel index
     print("Channel index = " + str(chan_idx[0]) + " of " + str(n_points))
     if data_size == 20000000:
         n_ints = 100 # Number of time samples to integrate
@@ -405,6 +405,13 @@ def main():
     
     print("Calculating cartesian coordiantes...")
     
+    # Get cartesian coordinates between sensors
+    r_rooftop = north_rooftop_cartesian_estimates()
+    r_gate = north_gate_cartesian_estimates()
+    r_chime = north_chime_cartesian_estimates()
+    r_west = north_west_cartesian_estimates()
+    r_nuevo = north_nuevo_cartesian_estimates()
+    
     array_flag = 0 # Flag to run either current nrdz sensor array or ideal nrdz sensor array
                    # 0 -> NRDZ 6 sensor array
                    # 1 -> NRDZ ideal array with similar sized aperture
@@ -412,12 +419,6 @@ def main():
     if array_flag == 0:
         n_ants = 6 # Number of sensors/antennas
         print("Array flag is set to 0 for current NRDZ 6 sensor array")
-        # Get cartesian coordinates between sensors
-        r_rooftop = north_rooftop_cartesian_estimates()
-        r_gate = north_gate_cartesian_estimates()
-        r_chime = north_chime_cartesian_estimates()
-        r_west = north_west_cartesian_estimates()
-        r_nuevo = north_nuevo_cartesian_estimates()
         coordinate_scaling = 1
         if n_ants == 6:
             rx = np.zeros(n_ants)
@@ -445,8 +446,9 @@ def main():
         longest_baseline = np.sqrt(np.square(abs(r_gate[0]) + abs(r_chime[0])) + np.square(abs(r_gate[1]) + abs(r_chime[1])))
         print("The longest baseline = " + str(longest_baseline) + " meters")
         wavelength = (c/center_freq)
-        antenna_array_dimension = round(longest_baseline/(wavelength/2))
-        n_ants = np.sqrt(antenna_array_dimension)
+        n_ants = round(longest_baseline/(wavelength/2))
+        antenna_array_dimension = int(round(np.sqrt(n_ants)))
+        print("Array dimension = ", str(antenna_array_dimension))
         rx = np.zeros(n_ants)
         ry = np.zeros(n_ants)
         rz = np.zeros(n_ants)
@@ -532,18 +534,28 @@ def main():
     print("Rank of estimated covariance matrix, R, is " + str(rank_R))
     print("Number of sensors, M, is " + str(n_ants))
     
-    a = np.zeros([n_ants,1])
-    a_H = np.zeros([1,n_ants])
+    a = np.zeros([n_ants,1]) + 1j*np.zeros([n_ants,1])
+    a_H = np.zeros([1,n_ants]) + 1j*np.zeros([1,n_ants])
+    #Un = np.zeros([n_ants,1]) + 1j*np.zeros([n_ants,1])
+    Un = np.zeros([n_ants,(n_ants-n_sources)]) + 1j*np.zeros([n_ants,(n_ants-n_sources)])
     beam_el = center_el
     beam_az = center_az
     a_center = array_manifold_vector(beam_el, beam_az, rx, ry, rz, f, n_ants)
     a_second = array_manifold_vector(beam_el+ang_spread_el, beam_az+ang_spread_az, rx, ry, rz, f, n_ants)
-    P = np.zeros([n_ants,n_ants])
+    P = np.zeros([n_ants,n_ants]) + 1j*np.zeros([1,n_ants])
     Ld = np.zeros([deg_range,n_points])
     ld = np.zeros([deg_range,n_points])
+    conventional_beamformer_result = np.zeros([deg_range,n_points])
     P_est = np.zeros([deg_range,n_points])
+    music_result = np.zeros([deg_range,n_points])
+    max_mle_angle = np.zeros([n_points,1])
+    max_mvdr_angle = np.zeros([n_points,1])
+    max_conventional_beamformer_angle = np.zeros([n_points,1])
+    max_music_angle = np.zeros([n_points,1])
     ld_normalized = np.zeros([deg_range,n_points])
     mvdr_normalized = np.zeros([deg_range,n_points])
+    conventional_beamformer_normalized = np.zeros([deg_range,n_points])
+    music_normalized = np.zeros([deg_range,n_points])
     spectra = np.zeros([n_points,1])
     synthesized_beam = np.zeros([deg_range,n_points])
     #synthesized_beam1 = np.zeros([deg_range,1])
@@ -552,7 +564,7 @@ def main():
     
     print("Estimating power spectrum...")
     el = center_el
-    full_spectrum = 1 # 0 -> Don't save or plot full spectrum to save computation time
+    full_spectrum = 0 # 0 -> Don't save or plot full spectrum to save computation time
                       # 1 -> Plot 3 bins surrounding the one with the signal to save computation time
                       # 2 -> Plot full spectrum
     if full_spectrum == 0:
@@ -562,6 +574,28 @@ def main():
         elif n_points == 1:
             R_x = R_hat[:,:,0]
             f = center_freq
+        eigenvalues,eigenvectors = np.linalg.eig(R_x)
+        if n_sources == 1:
+            largest_eigenvalue_idx = np.argmax(eigenvalues)
+            print("Largest eigenvalue idx = " + str(abs(largest_eigenvalue_idx)))
+            eigenvectors_noise = np.delete(eigenvectors,largest_eigenvalue_idx,1)
+            print("Eigenvector shape = " + str(eigenvectors_noise.shape))
+            Un = eigenvectors_noise # Eigenvector corresponding to the largest eigenvalue
+        if n_sources == 2:
+            #ordered_eigenvalues = np.argsort(eigenvalues, axis=0)
+            #largest_eigenvalue_idx = np.argmax(ordered_eigenvalues[::-1])
+            largest_eigenvalue_idx = np.argmax(eigenvalues)
+            remaining_eigenvalues = np.delete(eigenvalues,largest_eigenvalue_idx,0)
+            print(abs(eigenvalues))
+            print(eigenvalues.shape)
+            print(abs(remaining_eigenvalues))
+            print(remaining_eigenvalues.shape)
+            second_largest_eigenvalue_idx = np.argmax(abs(remaining_eigenvalues))
+            print("Largest eigenvalue idx = " + str(abs(largest_eigenvalue_idx)))
+            print("Second largest eigenvalue idx = " + str((second_largest_eigenvalue_idx+1)))
+            eigenvectors_noise = np.delete(eigenvectors,[largest_eigenvalue_idx,(second_largest_eigenvalue_idx+1)],1)
+            print("Eigenvector shape = " + str(eigenvectors_noise.shape))
+            Un = eigenvectors_noise # Eigenvector corresponding to the largest eigenvalue
         for az in range(0,deg_range):
             #a = array_manifold_vector(el, az, rx, ry, rz, f, n_ants)
             a = array_manifold_vector(el, az_range[az], rx, ry, rz, f, n_ants)
@@ -578,6 +612,14 @@ def main():
             # MVDR
             P_den = abs(np.dot(np.dot(a_H,np.linalg.inv(R_x)), a))
             P_est[az,chan_idx[0]] = 1/P_den
+            # Conventional Beamformer
+            conventional_beamformer_numerator = abs(np.matmul(np.matmul(a_H, R_x),a))
+            conventional_beamformer_result[az,chan_idx[0]] = conventional_beamformer_numerator[0][0]/abs(a_H_a[0][0])
+            # MUSIC
+            U_H = np.transpose(np.conjugate(Un))
+            music_denominator = abs(np.dot(np.dot(np.dot(a_H,Un),U_H),a))
+            music_result[az,chan_idx[0]] = 1/music_denominator[0][0]
+            
             beam_coordinate = np.matmul(a_center_H, a)[0]
             synthesized_beam[az,chan_idx[0]] = np.square(abs(beam_coordinate[0]))
             #beam_coordinate1 = np.matmul(a_second_H, a)[0]
@@ -586,10 +628,29 @@ def main():
             #P_den = abs(a_H.dot(np.linalg.inv(np.eye(n_ants,n_ants))).dot(a))
             #P_den = abs(np.dot(np.dot(a_H,np.linalg.inv(R_x)), a))
             #P[el,az] = 1/P_den
+        
+        # Normalize MLE result
         max_mle = np.max(1/ld[:,chan_idx[0]])
         ld_normalized[:,chan_idx[0]] = (1/max_mle)*(1/ld[:,chan_idx[0]])
+        # Normalize MVDR result
         max_mvdr = np.max(P_est[:,chan_idx[0]])
         mvdr_normalized[:,chan_idx[0]] = (1/max_mvdr)*P_est[:,chan_idx[0]]
+        # Normalize Conventional Beamformer result
+        max_conventional_beamformer = np.max(conventional_beamformer_result[:,chan_idx[0]])
+        conventional_beamformer_normalized[:,chan_idx[0]] = (1/max_conventional_beamformer)*conventional_beamformer_result[:,chan_idx[0]]
+        # Normalize MUSIC result
+        max_music = np.max(music_result[:,chan_idx[0]])
+        music_normalized[:,chan_idx[0]] = (1/max_music)*(music_result[:,chan_idx[0]])
+        
+        # Find max result index and angle of max result
+        max_mle_idx = np.argmax(ld_normalized[:,chan_idx[0]])
+        max_mle_angle[chan_idx[0]] = az_range[max_mle_idx]*np.pi/180
+        max_mvdr_idx = np.argmax(mvdr_normalized[:,chan_idx[0]])
+        max_mvdr_angle[chan_idx[0]] = az_range[max_mvdr_idx]*np.pi/180
+        max_conventional_beamformer_idx = np.argmax(conventional_beamformer_normalized[:,chan_idx[0]])
+        max_conventional_beamformer_angle[chan_idx[0]] = az_range[max_conventional_beamformer_idx]*np.pi/180
+        max_music_idx = np.argmax(music_normalized[:,chan_idx[0]])
+        max_music_angle[chan_idx[0]] = az_range[max_music_idx]*np.pi/180
     elif full_spectrum == 1:
         print("Minimum channel index = " + str(chan_idx[0]-1))
         print("Maximum channel index = " + str(chan_idx[0]+1))
@@ -601,7 +662,33 @@ def main():
             elif n_points == 1:
                 R_x = R_hat[:,:,0]
                 f = center_freq
+            for i in range(0, n_ants):
+                R_x[i,i] = 0
+            det = np.linalg.det(R_x)
+            print('Determinant of R_x at this bin = ' + str(det))
             spectra[c] = abs(np.matmul(np.matmul(np.ones([1,n_ants]),R_x),np.ones([n_ants,1])))
+            eigenvalues,eigenvectors = np.linalg.eig(R_x)
+            if n_sources == 1:
+                largest_eigenvalue_idx = np.argmax(eigenvalues)
+                print("Largest eigenvalue idx = " + str(abs(largest_eigenvalue_idx)))
+                eigenvectors_noise = np.delete(eigenvectors,largest_eigenvalue_idx,1)
+                print("Eigenvector shape = " + str(eigenvectors_noise.shape))
+                Un = eigenvectors_noise # Eigenvector corresponding to the largest eigenvalue
+            if n_sources == 2:
+                #ordered_eigenvalues = np.argsort(eigenvalues, axis=0)
+                #largest_eigenvalue_idx = np.argmax(ordered_eigenvalues[::-1])
+                largest_eigenvalue_idx = np.argmax(eigenvalues)
+                remaining_eigenvalues = np.delete(eigenvalues,largest_eigenvalue_idx,0)
+                print(abs(eigenvalues))
+                print(eigenvalues.shape)
+                print(abs(remaining_eigenvalues))
+                print(remaining_eigenvalues.shape)
+                second_largest_eigenvalue_idx = np.argmax(abs(remaining_eigenvalues))
+                print("Largest eigenvalue idx = " + str(abs(largest_eigenvalue_idx)))
+                print("Second largest eigenvalue idx = " + str((second_largest_eigenvalue_idx+5)))
+                eigenvectors_noise = np.delete(eigenvectors,[largest_eigenvalue_idx,(second_largest_eigenvalue_idx+5)],1)
+                print("Eigenvector shape = " + str(eigenvectors_noise.shape))
+                Un = eigenvectors_noise # Eigenvector corresponding to the largest eigenvalue
             for az in range(0,deg_range):
                 #a = array_manifold_vector(el, az, rx, ry, rz, f, n_ants)
                 a = array_manifold_vector(el, az_range[az], rx, ry, rz, f, n_ants)
@@ -618,6 +705,14 @@ def main():
                 # MVDR
                 P_den = abs(np.dot(np.dot(a_H,np.linalg.inv(R_x)), a))
                 P_est[az,c] = 1/P_den
+                # Conventional Beamformer
+                conventional_beamformer_numerator = abs(np.matmul(np.matmul(a_H, R_x),a))
+                conventional_beamformer_result[az,c] = conventional_beamformer_numerator[0][0]/abs(a_H_a[0][0])
+                # MUSIC
+                U_H = np.transpose(np.conjugate(Un))
+                music_denominator = abs(np.dot(np.dot(np.dot(a_H,Un),U_H),a))
+                music_result[az,c] = 1/music_denominator[0][0]
+                
                 beam_coordinate = np.matmul(a_center_H, a)[0]
                 synthesized_beam[az,c] = np.square(abs(beam_coordinate[0]))
                 #beam_coordinate1 = np.matmul(a_second_H, a)[0]
@@ -626,10 +721,29 @@ def main():
                 #P_den = abs(a_H.dot(np.linalg.inv(np.eye(n_ants,n_ants))).dot(a))
                 #P_den = abs(np.dot(np.dot(a_H,np.linalg.inv(R_x)), a))
                 #P[el,az] = 1/P_den
-            max_mle = np.max(1/ld[:,c])
-            ld_normalized[:,c] = (1/max_mle)*(1/ld[:,c])
+        
+            # Normalize MLE result
+            max_mle = np.max(ld[:,c])
+            ld_normalized[:,c] = (1/max_mle)*(ld[:,c])
+            # Normalize MVDR result
             max_mvdr = np.max(P_est[:,c])
             mvdr_normalized[:,c] = (1/max_mvdr)*P_est[:,c]
+            # Normalize Conventional Beamformer result
+            max_conventional_beamformer = np.max(conventional_beamformer_result[:,c])
+            conventional_beamformer_normalized[:,c] = (1/max_conventional_beamformer)*conventional_beamformer_result[:,c]
+            # Normalize MUSIC result
+            max_music = np.max(music_result[:,c])
+            music_normalized[:,c] = (1/max_music)*(music_result[:,c])
+            
+            # Find max result index and angle of max result
+            max_mle_idx = np.argmax(ld_normalized[:,c])
+            max_mle_angle[c] = az_range[max_mle_idx]*np.pi/180
+            max_mvdr_idx = np.argmax(mvdr_normalized[:,c])
+            max_mvdr_angle[c] = az_range[max_mvdr_idx]*np.pi/180
+            max_conventional_beamformer_idx = np.argmax(conventional_beamformer_normalized[:,c])
+            max_conventional_beamformer_angle[c] = az_range[max_conventional_beamformer_idx]*np.pi/180
+            max_music_idx = np.argmax(music_normalized[:,c])
+            max_music_angle[c] = az_range[max_music_idx]*np.pi/180
     elif full_spectrum == 2:
         display_bin = 0
         range_bins = 20
@@ -644,6 +758,27 @@ def main():
                 R_x = R_hat[:,:,0]
                 f = center_freq
             spectra[c] = abs(np.matmul(np.matmul(np.ones([1,n_ants]),R_x),np.ones([n_ants,1])))
+            # It is incredibly annoying, but the eig() function does not say it will always have the largest
+            # eigenvalue as it's largest. It seems to always be the largest one though so the rest of this 
+            # code is written with the assumption that the first eigenvalue is the largest one.
+            eigenvalues,eigenvectors = np.linalg.eig(R_x)
+            if n_sources == 1:
+                largest_eigenvalue_idx = np.argmax(eigenvalues)
+                print("Largest eigenvalue idx = " + str(abs(largest_eigenvalue_idx)))
+                eigenvectors_noise = np.delete(eigenvectors,largest_eigenvalue_idx,1)
+                print("Eigenvector shape = " + str(eigenvectors_noise.shape))
+                Un = eigenvectors_noise # Eigenvector corresponding to the largest eigenvalue
+            if n_sources == 2:
+                #ordered_eigenvalues = np.argsort(eigenvalues, axis=0)
+                #largest_eigenvalue_idx = np.argmax(ordered_eigenvalues[::-1])
+                largest_eigenvalue_idx = np.argmax(eigenvalues)
+                remaining_eigenvalues = np.delete(eigenvalues,largest_eigenvalue_idx,0)
+                second_largest_eigenvalue_idx = np.argmax(remaining_eigenvalues)
+                print("Largest eigenvalue idx = " + str(abs(largest_eigenvalue_idx)))
+                print("Second largest eigenvalue idx = " + str(abs(second_largest_eigenvalue_idx)))
+                eigenvectors_noise = np.delete(eigenvectors,[largest_eigenvalue_idx,(second_largest_eigenvalue_idx+1)],1)
+                print("Eigenvector shape = " + str(eigenvectors_noise.shape))
+                Un = eigenvectors_noise # Eigenvector corresponding to the largest eigenvalue
             for az in range(0,deg_range):
                 #a = array_manifold_vector(el, az, rx, ry, rz, f, n_ants)
                 a = array_manifold_vector(el, az_range[az], rx, ry, rz, f, n_ants)
@@ -660,6 +795,14 @@ def main():
                 # MVDR
                 P_den = abs(np.dot(np.dot(a_H,np.linalg.inv(R_x)), a))
                 P_est[az,c] = 1/P_den
+                # Conventional Beamformer
+                conventional_beamformer_numerator = abs(np.matmul(np.matmul(a_H, R_x),a))
+                conventional_beamformer_result[az,c] = conventional_beamformer_numerator[0][0]/abs(a_H_a[0][0])
+                # MUSIC
+                U_H = np.transpose(np.conjugate(Un))
+                music_denominator = abs(np.dot(np.dot(np.dot(a_H,Un),U_H),a))
+                music_result[az,c] = 1/music_denominator[0][0]
+                
                 beam_coordinate = np.matmul(a_center_H, a)[0]
                 synthesized_beam[az,c] = np.square(abs(beam_coordinate[0]))
                 #beam_coordinate1 = np.matmul(a_second_H, a)[0]
@@ -668,10 +811,29 @@ def main():
                 #P_den = abs(a_H.dot(np.linalg.inv(np.eye(n_ants,n_ants))).dot(a))
                 #P_den = abs(np.dot(np.dot(a_H,np.linalg.inv(R_x)), a))
                 #P[el,az] = 1/P_den
+            
+            # Normalize MLE result
             max_mle = np.max(1/ld[:,c])
             ld_normalized[:,c] = (1/max_mle)*(1/ld[:,c])
+            # Normalize MVDR result
             max_mvdr = np.max(P_est[:,c])
             mvdr_normalized[:,c] = (1/max_mvdr)*P_est[:,c]
+            # Normalize Conventional Beamformer result
+            max_conventional_beamformer = np.max(conventional_beamformer_result[:,c])
+            conventional_beamformer_normalized[:,c] = (1/max_conventional_beamformer)*conventional_beamformer_result[:,c]
+            # Normalize MUSIC result
+            max_music = np.max(music_result[:,c])
+            music_normalized[:,c] = (1/max_music)*(music_result[:,c])
+            
+            # Find max result index and angle of max result
+            max_mle_idx = np.argmax(ld_normalized[:,c])
+            max_mle_angle[c] = az_range[max_mle_idx]*np.pi/180
+            max_mvdr_idx = np.argmax(mvdr_normalized[:,c])
+            max_mvdr_angle[c] = az_range[max_mvdr_idx]*np.pi/180
+            max_conventional_beamformer_idx = np.argmax(conventional_beamformer_normalized[:,c])
+            max_conventional_beamformer_angle[c] = az_range[max_conventional_beamformer_idx]*np.pi/180
+            max_music_idx = np.argmax(music_normalized[:,c])
+            max_music_angle[c] = az_range[max_music_idx]*np.pi/180
     
     # Find the index of the azimuth angles corresponding to a particular source
     az1_idx = np.where(abs(az_range-src1_az)==min(abs(az_range-src1_az)))[0]
@@ -724,7 +886,9 @@ def main():
     plt.figure()
     plt.plot(az_range, ld_normalized[0:deg_range,chan_idx[0]], label='MLE')
     plt.plot(az_range, mvdr_normalized[0:deg_range,chan_idx[0]], label='MVDR')
-    plt.title("MLE and MVDR estimate along the horizon at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
+    plt.plot(az_range, conventional_beamformer_normalized[0:deg_range,chan_idx[0]], label='CONV-BF')
+    plt.plot(az_range, music_normalized[0:deg_range,chan_idx[0]], label='MUSIC')
+    plt.title("MLE, MVDR, CONV-BF, and MUSIC estimate along the horizon at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
     plt.ylabel("Power (Normalized)")
     plt.xlabel("Azimuth (degrees)")
     plt.legend()
@@ -734,10 +898,29 @@ def main():
     plt.figure()
     plt.polar(az_theta, ld_normalized[0:deg_range,chan_idx[0]], label='MLE')
     plt.polar(az_theta, mvdr_normalized[0:deg_range,chan_idx[0]], label='MVDR')
-    plt.title("MLE and MVDR estimate along the horizon at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
+    plt.polar(az_theta, conventional_beamformer_normalized[0:deg_range,chan_idx[0]], label='CONV-BF')
+    plt.polar(az_theta, music_normalized[0:deg_range,chan_idx[0]], label='MUSIC')
+    plt.title("MLE, MVDR, CONV-BF, and MUSIC estimate along the horizon at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
     plt.ylabel("Power (Normalized)")
     plt.xlabel("Azimuth (degrees)")
     plt.legend(loc='upper left')
+    plt.show()
+    
+    # Plot array positions
+    array_radius = 800
+    window_limit = 1000
+    plt.figure()
+    plt.plot(array_radius*np.cos(max_mle_angle[chan_idx[0]]),array_radius*np.sin(max_mle_angle[chan_idx[0]]), 'ro', label='MLE - '+str(np.round(max_mle_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
+    plt.plot(array_radius*np.cos(max_mvdr_angle[chan_idx[0]]),array_radius*np.sin(max_mvdr_angle[chan_idx[0]]), 'bo', label='MVDR - '+str(np.round(max_mvdr_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
+    plt.plot(array_radius*np.cos(max_conventional_beamformer_angle[chan_idx[0]]),array_radius*np.sin(max_conventional_beamformer_angle[chan_idx[0]]), 'yo', label='CONVBF - '+str(np.round(max_conventional_beamformer_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
+    plt.plot(array_radius*np.cos(max_music_angle[chan_idx[0]]),array_radius*np.sin(max_music_angle[chan_idx[0]]), 'mo', label='MUSIC - '+str(np.round(max_music_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
+    plt.plot(rx, ry, 'g1')
+    plt.xlim(-1*window_limit,window_limit)
+    plt.ylim(-1*window_limit,window_limit)
+    plt.title("MLE, MVDR, CONV-BF, and MUSIC DOA estimate along the horizon of array at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
+    plt.xlabel("Antenna Positions East to West")
+    plt.ylabel("Antenna Positions North to South")
+    plt.legend()
     plt.show()
     
     if full_spectrum == 1:
