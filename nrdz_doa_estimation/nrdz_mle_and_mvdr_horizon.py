@@ -22,7 +22,7 @@ data_size = 2000 # Small data size for quick testing so you don't sit around wai
 c = 3e8
 n_sources = 1 # Number of sources
 src1_el = 90 #45 # First source's elevation
-src1_az = 45 # First source's azimuth
+src1_az = 225 # First source's azimuth
 ang_spread_el = 0 # 0.09 # The angle spread between sources in elevation
 ang_spread_az = 35 # 0.09 # The angle spread between sources in azimuth
 deg_range = 10000 # Number of coordinates being scanned/analyzed/plotted
@@ -38,7 +38,9 @@ max_az = center_az + half_range # Maximum azimuth along axis
 az_interval = (max_az-min_az)/(deg_range-1) # Interval between neighboring azimuth coordinates. The minus 1 in the denominator is to accomodate the way linspace calculates the interval
 
 # File path
-filepath = "/mnt/primary-sis1-1G/nrdz/test/"
+#filepath = "/mnt/primary-1G/test/"
+#filepath = "/home/sonata/src/nrdz_toolkit/nrdz_doa_estimation/output/"
+filepath = "/mnt/local_data/nrdz_test/"
 # Extension of files
 extension = ".sc16"
 
@@ -221,7 +223,7 @@ def synthetic_data(freq, tbin, rx, ry, rz):
 
 # Generate synthetic data and write to binary file to test the code
 def write_synthetic_data(filename, freq, tbin, rx, ry, rz, n_ants):
-    x_comp = np.zeros([n_ants, data_size]) + 1j*np.zeros([n_ants, data_size]) # Complex data array
+    x_comp = np.zeros([n_ants, data_size], dtype=complex) # Complex data array
     x = np.zeros([2*data_size]).astype(np.int16) # Interleaved data array (real - even, imag - odd)
     full_filename = [""]*n_ants
     file_count = 0 # Count number of files generated
@@ -291,7 +293,7 @@ def complex_data_sc16(data_flag, freq, tbin, filename, rx, ry, rz):
 def perform_FFT(complex_data, n_points):
     data_len = len(complex_data)
     n_samps = int(data_len/n_points)
-    data_fft = np.zeros([n_samps, n_points]) + 1j*np.zeros([n_samps, n_points]) 
+    data_fft = np.zeros([n_samps, n_points], dtype=complex) 
     # Perform N-point FFT on data with dimensions, NSAMPS x NPOINTS
     for i in range(0, n_samps):
         data_fft[i,:] = np.fft.fftshift(np.fft.fft(complex_data[(0+i*n_points):(n_points+i*n_points)]))
@@ -299,12 +301,45 @@ def perform_FFT(complex_data, n_points):
     
     return data_fft 
 
+# Estimate visibilities (cross correlations)
+def estimate_visibilities(x, n_ants, n_samps, n_points, n_ints):
+    vis = np.asarray([np.multiply(x[n,:,:],np.conj(x[m,:,:])) for n in range(0, n_ants) for m in range(0, n_ants) if n!=m])
+    print("Visibility shape = " + str(np.shape(vis)))
+    
+    return vis
+    
+# Estimate auto correlations
+def estimate_auto_correlations(x, n_ants, n_samps, n_points, n_ints):
+    autos = np.asarray([np.multiply(x[n,:,:],np.conj(x[m,:,:])) for n in range(0, n_ants) for m in range(0, n_ants) if n==m])
+    print("Autos shape = " + str(np.shape(autos)))
+    
+    return autos
+
+# Calculate phase shift to use in synthesis imaging
+def interferometric_phase_shift(elevation, azimuth, rx, ry, rz, f, n_ants):
+    # Angular frequency
+    w = 2*np.pi*f
+    #el = (src1_el-half_range + el_interval*elevation)*np.pi/180
+    #az = (src1_az-half_range + az_interval*azimuth)*np.pi/180
+    
+    el = elevation*np.pi/180
+    az = azimuth*np.pi/180
+    
+    if n_ants == 1:
+        sys.exit("You have to set more than one antenna")
+    else:
+        a = np.asarray([np.exp((-1j*w/c)*(((rx[m]-rx[n])*np.sin(el)*np.cos(az) + (ry[m]-ry[n])*np.sin(el)*np.sin(az) + (rz[m]-rz[n])*np.cos(el)))) for n in range(0,n_ants) for m in range(0,n_ants) if n!=m])
+    
+    #print("Phase shift vector shape = " + str(np.shape(a)))
+    
+    return a
+
 # Estimate sample covariance
 def estimate_sample_covariance(x, n_ants, n_samps, n_points, n_ints):
     n_windows = int(n_samps/n_ints)
     if n_points > 1:
-        R_est = np.zeros([n_ants, n_ants, n_samps, n_points]) + 1j*np.zeros([n_ants, n_ants, n_samps, n_points])
-        R_hat = np.zeros([n_ants, n_ants, n_windows, n_points]) + 1j*np.zeros([n_ants, n_ants, n_windows, n_points])
+        R_est = np.zeros([n_ants, n_ants, n_samps, n_points], dtype=complex)
+        R_hat = np.zeros([n_ants, n_ants, n_windows, n_points], dtype=complex)
     # Estimate covariance
     #for a in range(0, n_ants):
     #    for b in range(0, n_ants):
@@ -319,8 +354,8 @@ def estimate_sample_covariance(x, n_ants, n_samps, n_points, n_ints):
         for i in range(0, n_windows):
             R_hat[:,:,i,:] = (1/n_ints)*np.sum(R_est[:,:,(0 + i*n_ints):((n_ints + i*n_ints)),:], axis=2)
     elif n_points == 1:
-        R_est = np.zeros([n_ants, n_ants, n_samps]) + 1j*np.zeros([n_ants, n_ants, n_samps])
-        R_hat = np.zeros([n_ants, n_ants, n_windows]) + 1j*np.zeros([n_ants, n_ants, n_windows])
+        R_est = np.zeros([n_ants, n_ants, n_samps], dtype=complex)
+        R_hat = np.zeros([n_ants, n_ants, n_windows], dtype=complex)
     # Estimate covariance
     #for a in range(0, n_ants):
     #    for b in range(0, n_ants):
@@ -357,8 +392,7 @@ def array_manifold_vector(elevation, azimuth, rx, ry, rz, f, n_ants):
     # For the NRDZ sensors, the phase center cannot be chosen since they cannot be electronically steered. They are at fixed positions
     
     if n_ants == 1:
-        for i in  range(0,n_ants):
-            a[i] = np.exp((-1j*w/c)*(rx*np.sin(el)*np.cos(az) + ry*np.sin(el)*np.sin(az) + rz*np.cos(el)))
+        sys.exit("You have to set more than one antenna")
     else:
         for i in  range(0,n_ants):
             tau_instrumental = 0#(rx[i]*np.sin(src1_el)*np.cos(src1_az) + ry[i]*np.sin(src1_el)*np.sin(src1_az) + rz[i]*np.cos(src1_el))
@@ -486,9 +520,9 @@ def main():
     
     print("Reading data for processing...")
     if n_points > 1:
-        X_agg = np.zeros([n_ants, n_samps, n_points]) + 1j*np.zeros([n_ants, n_samps, n_points])
+        X_agg = np.zeros([n_ants, n_samps, n_points], dtype=complex)
     elif n_points == 1:
-        X_agg = np.zeros([n_ants, n_samps]) + 1j*np.zeros([n_ants, n_samps])
+        X_agg = np.zeros([n_ants, n_samps], dtype=complex)
         
     # Read/generate data, perform FFT and aggregate sensor data 
     for i in range(0, n_ants):
@@ -508,8 +542,14 @@ def main():
     # Estimate sample covariance
     R_hat = estimate_sample_covariance(X_agg, n_ants, n_samps, n_points, n_ints)
     
+    # Estimate visibilies (cross correlations)
+    Vis = estimate_visibilities(X_agg, n_ants, n_samps, n_points, n_ints)
+    
+    # Estimate auto-correlations
+    Autos = estimate_auto_correlations(X_agg, n_ants, n_samps, n_points, n_ints)
+    
     # Estimate power spectrum over elevation and azimuth
-    R_x = np.zeros([n_ants, n_ants]) + 1j*np.zeros([n_ants, n_ants])
+    R_x = np.zeros([n_ants, n_ants], dtype=complex)
     if n_points > 1:
         R_x = R_hat[:,:,0,chan_idx[0]]
         f = center_freq + (chan_idx[0]-n_points/2)*coarse_chan
@@ -534,28 +574,31 @@ def main():
     print("Rank of estimated covariance matrix, R, is " + str(rank_R))
     print("Number of sensors, M, is " + str(n_ants))
     
-    a = np.zeros([n_ants,1]) + 1j*np.zeros([n_ants,1])
-    a_H = np.zeros([1,n_ants]) + 1j*np.zeros([1,n_ants])
+    a = np.zeros([n_ants,1], dtype=complex)
+    a_H = np.zeros([1,n_ants], dtype=complex)
     #Un = np.zeros([n_ants,1]) + 1j*np.zeros([n_ants,1])
-    Un = np.zeros([n_ants,(n_ants-n_sources)]) + 1j*np.zeros([n_ants,(n_ants-n_sources)])
+    Un = np.zeros([n_ants,(n_ants-n_sources)], dtype=complex)
     beam_el = center_el
     beam_az = center_az
     a_center = array_manifold_vector(beam_el, beam_az, rx, ry, rz, f, n_ants)
     a_second = array_manifold_vector(beam_el+ang_spread_el, beam_az+ang_spread_az, rx, ry, rz, f, n_ants)
-    P = np.zeros([n_ants,n_ants]) + 1j*np.zeros([1,n_ants])
+    P = np.zeros([n_ants,n_ants], dtype=complex)
     Ld = np.zeros([deg_range,n_points])
     ld = np.zeros([deg_range,n_points])
     conventional_beamformer_result = np.zeros([deg_range,n_points])
     P_est = np.zeros([deg_range,n_points])
+    synth_image = np.zeros([deg_range,n_points])
     music_result = np.zeros([deg_range,n_points])
     max_mle_angle = np.zeros([n_points,1])
     max_mvdr_angle = np.zeros([n_points,1])
     max_conventional_beamformer_angle = np.zeros([n_points,1])
     max_music_angle = np.zeros([n_points,1])
+    max_synth_angle = np.zeros([n_points,1])
     ld_normalized = np.zeros([deg_range,n_points])
     mvdr_normalized = np.zeros([deg_range,n_points])
     conventional_beamformer_normalized = np.zeros([deg_range,n_points])
     music_normalized = np.zeros([deg_range,n_points])
+    synth_normalized = np.zeros([deg_range,n_points])
     spectra = np.zeros([n_points,1])
     synthesized_beam = np.zeros([deg_range,n_points])
     #synthesized_beam1 = np.zeros([deg_range,1])
@@ -570,9 +613,11 @@ def main():
     if full_spectrum == 0:
         if n_points > 1:
             R_x = R_hat[:,:,0,chan_idx[0]]
+            R_v = Vis[:,0,chan_idx[0]]
             f = center_freq + (chan_idx[0]-n_points/2)*coarse_chan
         elif n_points == 1:
             R_x = R_hat[:,:,0]
+            R_v = Vis[:,0]
             f = center_freq
         eigenvalues,eigenvectors = np.linalg.eig(R_x)
         if n_sources == 1:
@@ -620,6 +665,10 @@ def main():
             music_denominator = abs(np.dot(np.dot(np.dot(a_H,Un),U_H),a))
             music_result[az,chan_idx[0]] = 1/music_denominator[0][0]
             
+            # Synthesis Imaging
+            v = interferometric_phase_shift(el, az_range[az], rx, ry, rz, f, n_ants)
+            synth_image[az,chan_idx[0]] = abs(np.dot(R_v, v))
+            
             beam_coordinate = np.matmul(a_center_H, a)[0]
             synthesized_beam[az,chan_idx[0]] = np.square(abs(beam_coordinate[0]))
             #beam_coordinate1 = np.matmul(a_second_H, a)[0]
@@ -641,6 +690,9 @@ def main():
         # Normalize MUSIC result
         max_music = np.max(music_result[:,chan_idx[0]])
         music_normalized[:,chan_idx[0]] = (1/max_music)*(music_result[:,chan_idx[0]])
+        # Normalize synthesized image result
+        max_synth = np.max(synth_image[:,chan_idx[0]])
+        synth_normalized[:,chan_idx[0]] = (1/max_synth)*(synth_image[:,chan_idx[0]])
         
         # Find max result index and angle of max result
         max_mle_idx = np.argmax(ld_normalized[:,chan_idx[0]])
@@ -651,6 +703,8 @@ def main():
         max_conventional_beamformer_angle[chan_idx[0]] = az_range[max_conventional_beamformer_idx]*np.pi/180
         max_music_idx = np.argmax(music_normalized[:,chan_idx[0]])
         max_music_angle[chan_idx[0]] = az_range[max_music_idx]*np.pi/180
+        max_synth_idx = np.argmax(synth_normalized[:,chan_idx[0]])
+        max_synth_angle[chan_idx[0]] = az_range[max_synth_idx]*np.pi/180
     elif full_spectrum == 1:
         print("Minimum channel index = " + str(chan_idx[0]-1))
         print("Maximum channel index = " + str(chan_idx[0]+1))
@@ -658,9 +712,11 @@ def main():
             print("Frequency bin " + str(c) + " of " + str(n_points))
             if n_points > 1:
                 R_x = R_hat[:,:,0,c]
+                R_v = Vis[:,0,c]
                 f = center_freq + (c-n_points/2)*coarse_chan
             elif n_points == 1:
                 R_x = R_hat[:,:,0]
+                R_v = Vis[:,0]
                 f = center_freq
             for i in range(0, n_ants):
                 R_x[i,i] = 0
@@ -712,6 +768,10 @@ def main():
                 U_H = np.transpose(np.conjugate(Un))
                 music_denominator = abs(np.dot(np.dot(np.dot(a_H,Un),U_H),a))
                 music_result[az,c] = 1/music_denominator[0][0]
+                # Synthesis Imaging
+                v = interferometric_phase_shift(el, az_range[az], rx, ry, rz, f, n_ants)
+                synth_image[az,c] = abs(np.dot(R_v, v))
+                
                 
                 beam_coordinate = np.matmul(a_center_H, a)[0]
                 synthesized_beam[az,c] = np.square(abs(beam_coordinate[0]))
@@ -734,6 +794,9 @@ def main():
             # Normalize MUSIC result
             max_music = np.max(music_result[:,c])
             music_normalized[:,c] = (1/max_music)*(music_result[:,c])
+            # Normalize synthesized image result
+            max_synth = np.max(synth_image[:,c])
+            synth_normalized[:,c] = (1/max_synth)*(synth_image[:,c])
             
             # Find max result index and angle of max result
             max_mle_idx = np.argmax(ld_normalized[:,c])
@@ -744,6 +807,8 @@ def main():
             max_conventional_beamformer_angle[c] = az_range[max_conventional_beamformer_idx]*np.pi/180
             max_music_idx = np.argmax(music_normalized[:,c])
             max_music_angle[c] = az_range[max_music_idx]*np.pi/180
+            max_synth_idx = np.argmax(synth_normalized[:,c])
+            max_synth_angle[c] = az_range[max_synth_idx]*np.pi/180
     elif full_spectrum == 2:
         display_bin = 0
         range_bins = 20
@@ -753,9 +818,11 @@ def main():
                 display_bin += 1
             if n_points > 1:
                 R_x = R_hat[:,:,0,c]
+                R_v = Vis[:,0,c]
                 f = center_freq + (c-n_points/2)*coarse_chan
             elif n_points == 1:
                 R_x = R_hat[:,:,0]
+                R_v = Vis[:,0]
                 f = center_freq
             spectra[c] = abs(np.matmul(np.matmul(np.ones([1,n_ants]),R_x),np.ones([n_ants,1])))
             # It is incredibly annoying, but the eig() function does not say it will always have the largest
@@ -802,6 +869,9 @@ def main():
                 U_H = np.transpose(np.conjugate(Un))
                 music_denominator = abs(np.dot(np.dot(np.dot(a_H,Un),U_H),a))
                 music_result[az,c] = 1/music_denominator[0][0]
+                # Synthesis Imaging
+                v = interferometric_phase_shift(el, az_range[az], rx, ry, rz, f, n_ants)
+                synth_image[az,c] = abs(np.dot(R_v, v))
                 
                 beam_coordinate = np.matmul(a_center_H, a)[0]
                 synthesized_beam[az,c] = np.square(abs(beam_coordinate[0]))
@@ -824,6 +894,9 @@ def main():
             # Normalize MUSIC result
             max_music = np.max(music_result[:,c])
             music_normalized[:,c] = (1/max_music)*(music_result[:,c])
+            # Normalize synthesized image result
+            max_synth = np.max(synth_image[:,c])
+            synth_normalized[:,c] = (1/max_synth)*(synth_image[:,c])
             
             # Find max result index and angle of max result
             max_mle_idx = np.argmax(ld_normalized[:,c])
@@ -834,6 +907,8 @@ def main():
             max_conventional_beamformer_angle[c] = az_range[max_conventional_beamformer_idx]*np.pi/180
             max_music_idx = np.argmax(music_normalized[:,c])
             max_music_angle[c] = az_range[max_music_idx]*np.pi/180
+            max_synth_idx = np.argmax(synth_normalized[:,c])
+            max_synth_angle[c] = az_range[max_synth_idx]*np.pi/180
     
     # Find the index of the azimuth angles corresponding to a particular source
     az1_idx = np.where(abs(az_range-src1_az)==min(abs(az_range-src1_az)))[0]
@@ -888,7 +963,8 @@ def main():
     plt.plot(az_range, mvdr_normalized[0:deg_range,chan_idx[0]], label='MVDR')
     plt.plot(az_range, conventional_beamformer_normalized[0:deg_range,chan_idx[0]], label='CONV-BF')
     plt.plot(az_range, music_normalized[0:deg_range,chan_idx[0]], label='MUSIC')
-    plt.title("MLE, MVDR, CONV-BF, and MUSIC estimate along the horizon at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
+    plt.plot(az_range, synth_normalized[0:deg_range,chan_idx[0]], label='SYNTH IMG')
+    plt.title("MLE, MVDR, CONV-BF, MUSIC, and SYNTH IMG estimate along the horizon at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
     plt.ylabel("Power (Normalized)")
     plt.xlabel("Azimuth (degrees)")
     plt.legend()
@@ -900,27 +976,36 @@ def main():
     plt.polar(az_theta, mvdr_normalized[0:deg_range,chan_idx[0]], label='MVDR')
     plt.polar(az_theta, conventional_beamformer_normalized[0:deg_range,chan_idx[0]], label='CONV-BF')
     plt.polar(az_theta, music_normalized[0:deg_range,chan_idx[0]], label='MUSIC')
-    plt.title("MLE, MVDR, CONV-BF, and MUSIC estimate along the horizon at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
+    plt.polar(az_theta, synth_normalized[0:deg_range,chan_idx[0]], label='SYNTH IMG')
+    plt.title("MLE, MVDR, CONV-BF, MUSIC, and SYNTH IMG estimate along the horizon at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
     plt.ylabel("Power (Normalized)")
     plt.xlabel("Azimuth (degrees)")
     plt.legend(loc='upper left')
     plt.show()
     
     # Plot array positions
-    array_radius = 800
-    window_limit = 1000
+    rfi_radius = 1000
+    array_radius = 700
+    axis_limit = 1200
     plt.figure()
-    plt.plot(array_radius*np.cos(max_mle_angle[chan_idx[0]]),array_radius*np.sin(max_mle_angle[chan_idx[0]]), 'ro', label='MLE - '+str(np.round(max_mle_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
-    plt.plot(array_radius*np.cos(max_mvdr_angle[chan_idx[0]]),array_radius*np.sin(max_mvdr_angle[chan_idx[0]]), 'bo', label='MVDR - '+str(np.round(max_mvdr_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
-    plt.plot(array_radius*np.cos(max_conventional_beamformer_angle[chan_idx[0]]),array_radius*np.sin(max_conventional_beamformer_angle[chan_idx[0]]), 'yo', label='CONVBF - '+str(np.round(max_conventional_beamformer_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
-    plt.plot(array_radius*np.cos(max_music_angle[chan_idx[0]]),array_radius*np.sin(max_music_angle[chan_idx[0]]), 'mo', label='MUSIC - '+str(np.round(max_music_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
+    plt.plot(rfi_radius*np.cos(max_mle_angle[chan_idx[0]]),rfi_radius*np.sin(max_mle_angle[chan_idx[0]]), 'ro', label='MLE - '+str(np.round(max_mle_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
+    plt.plot(rfi_radius*np.cos(max_mvdr_angle[chan_idx[0]]),rfi_radius*np.sin(max_mvdr_angle[chan_idx[0]]), 'bo', label='MVDR - '+str(np.round(max_mvdr_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
+    plt.plot(rfi_radius*np.cos(max_conventional_beamformer_angle[chan_idx[0]]),rfi_radius*np.sin(max_conventional_beamformer_angle[chan_idx[0]]), 'yo', label='CONVBF - '+str(np.round(max_conventional_beamformer_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
+    plt.plot(rfi_radius*np.cos(max_music_angle[chan_idx[0]]),rfi_radius*np.sin(max_music_angle[chan_idx[0]]), 'mo', label='MUSIC - '+str(np.round(max_music_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
+    plt.plot(rfi_radius*np.cos(max_synth_angle[chan_idx[0]]),rfi_radius*np.sin(max_synth_angle[chan_idx[0]]), 'ko', label='SYNTH - '+str(np.round(max_synth_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$')
+    plt.text(rfi_radius*np.cos(max_music_angle[chan_idx[0]]),rfi_radius*np.sin(max_music_angle[chan_idx[0]]), str(round(max_music_angle[chan_idx[0]][0]*180/np.pi))+'$^\circ$', horizontalalignment='right')
+    plt.text(rfi_radius, 0, '0$^\circ$')
+    plt.plot(array_radius*np.cos(az_theta),array_radius*np.sin(az_theta), 'g--')
     plt.plot(rx, ry, 'g1')
-    plt.xlim(-1*window_limit,window_limit)
-    plt.ylim(-1*window_limit,window_limit)
-    plt.title("MLE, MVDR, CONV-BF, and MUSIC DOA estimate along the horizon of array at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
+    plt.xlim(-1*axis_limit,axis_limit)
+    plt.ylim(-1*axis_limit,axis_limit)
+    plt.title("MLE, MVDR, CONV-BF, MUSIC, and SYNTH DOA estimate along the horizon of array at " + str(narrowband_freqs[chan_idx[0]][0]/1e6) + " MHz")
     plt.xlabel("Antenna Positions East to West")
     plt.ylabel("Antenna Positions North to South")
-    plt.legend()
+    plt.yticks([])
+    plt.xticks([])
+    #plt.legend(bbox_to_anchor=(1.04,0.5),loc='center left') # Outside of plot
+    plt.legend(loc='upper right')
     plt.show()
     
     if full_spectrum == 1:
