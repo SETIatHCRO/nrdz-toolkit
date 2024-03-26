@@ -14,10 +14,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy.linalg import matrix_rank
 from scipy import fftpack
+import scipy.optimize as opt
 
 # Size of real/imaginary data in file
 #data_size = 20000000 # Large data size similar to real data
-data_size = 2000 # Small data size for quick testing so you don't sit around waiting forever 
+data_size = 50000 # Small data size for quick testing so you don't sit around waiting forever 
 # Speed of light
 c = 3e8
 n_sources = 1 # Number of sources
@@ -27,20 +28,37 @@ ang_spread_el = 0 # 0.09 # The angle spread between sources in elevation
 ang_spread_az = 35 # 0.09 # The angle spread between sources in azimuth
 deg_range = 10000 # Number of coordinates being scanned/analyzed/plotted
 
+# Known trnamitter coordinates used for delay error offset
+known_transmitter_x = -10
+known_transmitter_y = 50
+known_transmitter_z = 0
+
+# Perform offset calibration
+offset_calibration=0
+delay_offset_file = 'delay_offset.txt'
+
 # Source x and y coordinates from reference antenna
-rs_x = 10
-rs_y = 5
-rs_z = 0
+unknown_transmitter_x = -30
+unknown_transmitter_y = 80
+unknown_transmitter_z = 0
+if offset_calibration==1:
+    rs_x = known_transmitter_x
+    rs_y = known_transmitter_y
+    rs_z = known_transmitter_z
+elif offset_calibration==0:
+    rs_x = unknown_transmitter_x
+    rs_y = unknown_transmitter_y
+    rs_z = unknown_transmitter_z
 
 # Range of source values to sweep through
-x_range = np.linspace(0,700,700) #30
-y_range = np.linspace(0,700,700) #30
+x_range = np.linspace(-300,299,600) #30
+y_range = np.linspace(-300,299,600) #30
 z_range = 0
 
 ant_center_freq = 1e9 # 1e5
 ant_freq = 1e9 # 1e5+1e6 # Frequency of signal (one of them if there are multiple at different frequencies) being detected
 ant_f_down = 0 #1e3 # Shift frequency down if signal frequency is high and baselines are very long
-samp_rate = 20e6 #20e6 # Sample rate of synthesized signal
+samp_rate = 2e10 #20e6 # Sample rate of synthesized signal
 n_points = 1 # Number of points of FFT
 tbin = 1/samp_rate # Time between samples
 full_band = samp_rate #20e6 # Full bandwidth in Hz
@@ -192,7 +210,7 @@ def cartesian_estimates():
     return xy_coords
 
 # Generate synthetic data
-def synthetic_data(sim_freq, tbin, rx, ry, rz):
+def synthetic_data(sim_freq, tbin, rx, ry, rz, m):
     x_comp = np.zeros([data_size], dtype=complex) # Complex data array
     w = 2*np.pi*sim_freq # Angular frequency
     s = np.zeros([data_size, n_sources], dtype=complex) # Signal amplitude
@@ -209,6 +227,7 @@ def synthetic_data(sim_freq, tbin, rx, ry, rz):
     A = 10
     second_sig_freq = 0 #200e3
     window_counter = 0
+    tau_file = open('tau_sig.txt','a')
     for t in range(0, data_size):
         srcs = 0
         prev_srcs = 0
@@ -229,22 +248,32 @@ def synthetic_data(sim_freq, tbin, rx, ry, rz):
             #s[t,p] = np.exp(1j*((w*t*tbin) + (phase)))
             #s[t,p] = np.sinc(w*t*tbin)*np.exp(1j*phase)
             
+            #tau = (1/c)*(\
+            #(rx+rs_x)*np.sin(el[t,p])*np.cos(az[t,p])\
+            #+ (ry+rs_y)*np.sin(el[t,p])*np.sin(az[t,p])\
+            #+ (rz+rs_z)*np.cos(el[t,p]))
+
             tau = (1/c)*(\
-            (rx+rs_x)*np.sin(el[t,p])*np.cos(az[t,p])\
-            + (ry+rs_y)*np.sin(el[t,p])*np.sin(az[t,p])\
-            + (rz+rs_z)*np.cos(el[t,p]))
+            np.sqrt(\
+            np.square(rs_x)\
+            + np.square(rs_y)\
+            + np.square(rs_z))-\
+            np.sqrt(\
+            np.square(rs_x-rx)\
+            + np.square(rs_y-ry)\
+            + np.square(rs_z-rz)))
             #if (t*tbin) >= abs(tau):
             #    window_counter += 1
             #    if window_counter < 30:
             #        s[t,p] = np.exp(1j*((w*t*tbin) + (phase)))
-            
+            #print(tau)
             tau_idx = int(np.floor(tau/tbin))
             if t==0:
                 print(tau_idx)
             
-            signal_start_time_idx = 400
+            signal_start_time_idx = 45000
             window_counter += 1
-            if window_counter < 30:
+            if window_counter < 100:
                 s[signal_start_time_idx+(t+tau_idx),p] = np.exp(1j*((w*t*tbin) + (phase)))
             
             # ------------------Add noise---------------
@@ -263,6 +292,12 @@ def synthetic_data(sim_freq, tbin, rx, ry, rz):
         x_comp[t] = srcs
         
     x_comp += noise
+    
+    ant_idx_file = "m="+str(m)+"\n"
+    tau_file.write(ant_idx_file)
+    tau_file.write("start_time_idx+tau_idx="+str(signal_start_time_idx+tau_idx)+"\n")
+    tau_file.write(str(tau)+"\n")
+    tau_file.close()
     
     #print("tbin = " + str(tbin))
     #print("tau = " + str(tau))
@@ -285,7 +320,7 @@ def write_synthetic_data(filename, sim_freq, tbin, rx, ry, rz, n_ants):
         #print("ant = " + str(i))
         full_filename[i] = filepath + filename + str(i) + extension
         if not os.path.exists(full_filename[i]):
-            x_comp[i,:] = synthetic_data(sim_freq, tbin, rx[i], ry[i], rz[i])
+            x_comp[i,:] = synthetic_data(sim_freq, tbin, rx[i], ry[i], rz[i], i)
             file_count += 1
         else:
             print("Test file, " + full_filename[i] + " exists so don't need to synthesize data, create, and write to it again.")
@@ -393,7 +428,7 @@ def estimate_cross_correlations(x, n_ants):
                 r[n, m] = np.fft.fftshift(np.fft.ifft(R))
     
     return r
-    
+
 # Estimate visibilities (cross correlations)
 def estimate_cross_correlations_traditional(x, n_ants):
     # Compute length for zero-padding
@@ -525,6 +560,19 @@ def array_manifold_vector(elevation, azimuth, rx, ry, rz, f, n_ants, mix_down, t
     
     return a
 
+def error_between_expected_observed(rx,ry,rz,ct):
+    def fn(args):
+        x,y,z = args
+        err_delay = [np.sqrt(np.square(x-rx[0])+np.square(y-ry[0])\
+        +np.square(z-rz[0])) - np.sqrt(np.square(x-rx[m])+np.square(y-\
+        ry[m])+np.square(z-rz[m])) - ct[m] for m in range(0,n_ants)]
+        #err_delay = list(np.zeros(n_ants))
+        #for m in range(0,n_ants):
+        #    err_delay[m] = np.sqrt(np.square(x-rx[0])+np.square(y-ry[0])\
+        #    +np.square(z-rz[0])) - np.sqrt(np.square(x-rx[m])+np.square(y-\
+        #    ry[m])+np.square(z-rz[m])) - ct[m]
+        return err_delay
+    return fn
 
 def main():
     start_time = time.time()
@@ -569,8 +617,8 @@ def main():
     rz = np.zeros(n_ants)
     rx = np.asarray([ant_rect_coords[xy][0] for xy in ant_rect_coords])
     ry = np.asarray([ant_rect_coords[xy][1] for xy in ant_rect_coords])
-    #print(rx)
-    #print(ry)
+    print(rx)
+    print(ry)
     
     data_flag = 0 # If set to 0, the script generates it's own data, and if set to 1, it reads a file
     sim_data_write = 1 # If set to 1, the script synthesizes data and writes it to a binary file to be read, and if set to 0, the simulated data is not written to and read from binary files
@@ -642,8 +690,18 @@ def main():
     est_x_src = np.array([])
     est_y_src = np.array([])
     est_z_src = np.array([])
-    num_indices = 10
+    num_indices = 8
+    ref_ant_idx = 0
+    est_xyz = {}
+    est_tau = {}
     tau = {}
+    tau_file = open('tau.txt','a')
+    delay_offset = np.zeros(n_ants)
+    #chg_delay_offset = 1 # Set to 0 if calibration is done and no new offset needed and 1 if a new offset is needed 
+    x_init = np.mean(rx)
+    y_init = np.mean(ry)
+    z_init = np.mean(rz)
+    c_tau = list(np.zeros(n_ants))
     for ch in freq_chan_indices:
         if n_points > 1:
             f = center_freq + (ch-n_points/2)*coarse_chan
@@ -652,39 +710,116 @@ def main():
             f = center_freq
             Vis = estimate_cross_correlations(X_agg[:,:], n_ants)
 
-        auto_corr = abs(Vis[0,0])
+        auto_corr = abs(Vis[ref_ant_idx,ref_ant_idx])
         auto_corr_peak_time_idx = np.argmax(auto_corr)
-        for n in range(0,n_ants):
-            for m in range(0,n_ants): 
-                if n!=m:
-                    x_corr = abs(Vis[n,m])
-                    max_val_time_idx = np.argmax(x_corr)
-                    calc_delay = (max_val_time_idx-auto_corr_peak_time_idx)*tbin_fft
-                    
-                    print("n=" + str(n) + " m=" + str(m) + " max_val_time_idx = " + str(max_val_time_idx))
-                    print("n=" + str(n) + " m=" + str(m) + " max_val_time_idx-auto_corr_peak_time_idx = " + str(max_val_time_idx-auto_corr_peak_time_idx))
-                    print("calc_delay = " + str(calc_delay))
-                    
-                    #for xs in range(0,x_range):
-                    #    for ys in range(0,y_range):
-                    #        for az in range(0,deg_range):
-                    #            tau[xs,ys,az_range[az]] = (-1/c)*((((rx[n]-rx[m])+xs)*np.sin(el_rad)*np.cos(az_rad[az]) + ((ry[n]-ry[m])+ys)*np.sin(el_rad)*np.sin(az_rad[az]) + (rz[n]-rz[m])*np.cos(el_rad)))
-                    
-                    tau = {(xs,ys,zs):(1/c)*(np.sqrt(np.square(xs - rx[n]) + np.square(ys - ry[n]) + np.square(0-rz[n])) - np.sqrt(np.square(xs - rx[m]) + np.square(ys - ry[m]) + np.square(0-rz[m]))) for ys in y_range for xs in x_range for zs in [0]}
+        for m in range(0,n_ants):
+            x_corr = abs(Vis[ref_ant_idx,m])
+            max_val_time_idx = np.argmax(x_corr)
+            calc_delay = (max_val_time_idx-auto_corr_peak_time_idx)*tbin_fft
             
-                    #tau = {(xs,ys,zs):(-1/c)*((((rx[n]-rx[m])+xs)*np.sin(el_rad)*np.cos(az_rad[az]) + ((ry[n]-ry[m])+ys)*np.sin(el_rad)*np.sin(az_rad[az]) + (rz[n]-rz[m])*np.cos(el_rad))) for az in range(0,deg_range) for ys in range(0,y_range) for xs in range(0,x_range)}
-               
-                    tau_values = np.array(list(tau.values()))
-                    tau_keys = np.array(list(tau.keys()))
+            if offset_calibration==1:
+                delay_known = (1/c)*(\
+                np.sqrt(\
+                np.square(known_transmitter_x)\
+                + np.square(known_transmitter_y)\
+                + np.square(known_transmitter_z))-\
+                np.sqrt(\
+                np.square(known_transmitter_x-rx[m])\
+                + np.square(known_transmitter_y-ry[m])\
+                + np.square(known_transmitter_z-rz[m])))
+            
+                delay_offset[m] = delay_known-calc_delay
+            elif offset_calibration==0:
+                # Read delay offsets from text file
+                delay_offset = np.loadtxt(delay_offset_file)
+            
+            calc_delay = calc_delay + delay_offset[m]
+            
+            
+            c_tau[m] = calc_delay*c
+            
+            #if m==0:
+            #    calc_delay = 0.0
+            #    delay_offset = 0.0
+            #if m==1:
+            #    calc_delay = (max_val_time_idx-auto_corr_peak_time_idx)*tbin_fft
+            #    delay_offset = 9.385144456867305e-13 # delay_known-calc_delay
+            #    calc_delay = calc_delay + delay_offset
+            #if m==2:
+            #    calc_delay = (max_val_time_idx-auto_corr_peak_time_idx)*tbin_fft
+            #    delay_offset = -4.236367642763534e-11 # delay_known-calc_delay
+            #    calc_delay = calc_delay + delay_offset
+            #if m==3:
+            #    calc_delay = (max_val_time_idx-auto_corr_peak_time_idx)*tbin_fft
+            #    delay_offset = -1.4966183017429085e-11 # delay_known-calc_delay
+            #    calc_delay = calc_delay + delay_offset
+            #if m==4:
+            #    calc_delay = (max_val_time_idx-auto_corr_peak_time_idx)*tbin_fft
+            #    delay_offset = 1.621667759539575e-11 # delay_known-calc_delay
+            #    calc_delay = calc_delay + delay_offset
+            #if m==5:
+            #    calc_delay = (max_val_time_idx-auto_corr_peak_time_idx)*tbin_fft
+            #    delay_offset = 5.780684691293058e-11 # delay_known-calc_delay
+            #    calc_delay = calc_delay + delay_offset
                     
-                    range_az_closest_indices = np.argsort(abs(tau_values-calc_delay))
-                    closest_indices = range_az_closest_indices[:num_indices]
-                    #print(tau_keys[closest_indices])
-                    for idx in range(0,num_indices):
-                        est_x_src = np.concatenate((est_x_src,np.array([tau_keys[closest_indices][idx][0]])), axis=0)
-                        est_y_src = np.concatenate((est_y_src,np.array([tau_keys[closest_indices][idx][1]])), axis=0)
-                        est_z_src = np.concatenate((est_z_src,np.array([tau_keys[closest_indices][idx][2]])), axis=0)
+            print("m=" + str(m) + " max_val_time_idx = " + str(max_val_time_idx))
+            print("m=" + str(m) + " max_val_time_idx-auto_corr_peak_time_idx = " + str(max_val_time_idx-auto_corr_peak_time_idx))
+            print("delay_offset = " + str(delay_offset))
+            print("calc_delay = " + str(calc_delay))
+        
+            #for xs in x_range:
+            #    for ys in y_range:
+            #        for zs in [0]:
+            #            tau[xs,ys,zs] = (1/c)*(np.sqrt(np.square(xs) + np.square(ys) + np.square(zs)) - np.sqrt(np.square(xs-rx[m]) + np.square(ys-ry[m]) + np.square(zs-rz[m])))
+                    
+            tau = {(xs,ys,zs):(1/c)*(\
+            np.sqrt(np.square(xs-rx[ref_ant_idx])+np.square(ys-ry[ref_ant_idx])+np.square(zs-rz[ref_ant_idx])) -\
+            np.sqrt(np.square(xs-rx[m]) + np.square(ys-ry[m]) + np.square(zs-rz[m]))) \
+            for ys in y_range for xs in x_range for zs in [0]}
+            
+            #tau = {(xs,ys,zs):(-1/c)*((((rx[n]-rx[m])+xs)*np.sin(el_rad)*np.cos(az_rad[az]) + ((ry[n]-ry[m])+ys)*np.sin(el_rad)*np.sin(az_rad[az]) + (rz[n]-rz[m])*np.cos(el_rad))) for az in range(0,deg_range) for ys in range(0,y_range) for xs in range(0,x_range)}
+               
+            tau_values = np.array(list(tau.values()))
+            tau_keys = np.array(list(tau.keys()))
+            
+            ant_idx_file = "m="+str(m)+"\n"
+            tau_file.write(ant_idx_file)
+            np.savetxt(tau_file, tau_values)
+                    
+            range_az_closest_indices = np.argsort(abs(tau_values-calc_delay))
+            closest_indices = range_az_closest_indices[:num_indices]
+            #print(tau_keys[closest_indices])
+            for idx in range(0,num_indices):
+                est_x_src = np.concatenate((est_x_src,np.array([tau_keys[closest_indices][idx][0]])), axis=0)
+                est_y_src = np.concatenate((est_y_src,np.array([tau_keys[closest_indices][idx][1]])), axis=0)
+                est_z_src = np.concatenate((est_z_src,np.array([tau_keys[closest_indices][idx][2]])), axis=0)
+                
+            est_tau[m] = list(tau_values[closest_indices])
+            est_xyz[m] = list(tau_keys[closest_indices])
 
+    tau_file.close()
+    
+    # Write to text file
+    if offset_calibration==1:
+        np.savetxt(delay_offset_file, delay_offset)
+    
+    # Evaluate the system of n_ants hyperbolas
+    Err_exp_obs = error_between_expected_observed(rx,ry,rz,c_tau)
+    
+    # scipy's least squares solver used to estimate interferer cartesian coordinates
+    xyz_opt = opt.leastsq(Err_exp_obs, x0=[x_init,y_init,z_init])
+    
+    # Estimates of cartesian coordinates after least squares optimization
+    x_opt = xyz_opt[0][0]
+    y_opt = xyz_opt[0][1]
+    z_opt = xyz_opt[0][2]
+    
+    print("xyz_opt = " + str(xyz_opt))
+    print("x_opt = " + str(x_opt))
+    print("y_opt = " + str(y_opt))
+    print("z_opt = " + str(z_opt))
+    
+    #print(est_tau)
     print("est_x_src = " + str(est_x_src))
     print("est_y_src = " + str(est_y_src))
     print("est_z_src = " + str(est_z_src))
@@ -696,12 +831,17 @@ def main():
     #np.savetxt("tau.txt", tau)
     unique_x,counts_x = np.unique(est_x_src.astype(int), return_counts=True)
     max_count_idx_x = np.argmax(counts_x)
-    est_x_range_tdoa_tmp = unique_x[counts_x==counts_x[max_count_idx_x]]
+    counts2_x = np.delete(counts_x,max_count_idx_x)
+    max_2nd_count_idx_x = np.argmax(counts2_x)
+    est_x_range_tdoa_tmp = list(np.concatenate((unique_x[counts_x==counts_x[max_count_idx_x]], unique_x[counts_x==counts_x[max_2nd_count_idx_x]]), axis=0))
     est_x_range_tdoa = np.mean(est_x_range_tdoa_tmp)
     
     unique_y,counts_y = np.unique(est_y_src.astype(int), return_counts=True)
     max_count_idx_y = np.argmax(counts_y)
-    est_y_range_tdoa_tmp = unique_y[counts_y==counts_y[max_count_idx_y]]
+    #est_y_range_tdoa_tmp = unique_y[counts_y==counts_y[max_count_idx_y]]
+    counts2_y = np.delete(counts_y,max_count_idx_y)
+    max_2nd_count_idx_y = np.argmax(counts2_y)
+    est_y_range_tdoa_tmp = list(np.concatenate((unique_y[counts_y==counts_y[max_count_idx_y]], unique_y[counts_y==counts_y[max_2nd_count_idx_y]]), axis=0))
     est_y_range_tdoa = np.mean(est_y_range_tdoa_tmp)
     
     unique_z,counts_z = np.unique(est_z_src.astype(int), return_counts=True)
@@ -764,7 +904,7 @@ def main():
     
     axs[4].plot(abs(Vis[0,4]))
     
-    axs[5].plot(abs(Vis[1,2]))
+    axs[5].plot(abs(Vis[0,5]))
     
     plt.xlabel("Time sample index")
     fig.text(0.02, 0.5, 'Power (arb. units', va='center', rotation='vertical')
@@ -775,7 +915,7 @@ def main():
     array_radius = 700
     axis_limit = 1200
     plt.figure()
-    plt.plot(est_x_range_tdoa,est_y_range_tdoa, 'ro', label='TDOA - x='+str(np.round(est_x_range_tdoa))+', y='+str(np.round(est_y_range_tdoa)))
+    plt.plot(x_opt,y_opt, 'ro', label='TDOA - x='+str(np.round(x_opt))+', y='+str(np.round(y_opt)))
     
     #plt.text(rfi_radius*np.cos(est_az_angle_tdoa*np.pi/180),rfi_radius*np.sin(est_az_angle_tdoa*np.pi/180), str(round(est_az_angle_tdoa))+'$^\circ$', horizontalalignment='right')
     plt.text(rfi_radius, 0, '0$^\circ$')
